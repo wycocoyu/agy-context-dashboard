@@ -240,6 +240,14 @@ Antigravity 的 `inputTokens` 是未缓存输入。缓存率 = 缓存读取 ÷�
 
 如果你在 Antigravity 桌面端里同时推进多条会话、多个需求，可以搭配体验同系列的 [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar)：
 
+<table>
+<tr><th width="58%">收件箱 / 待续 / 延后悬停工作流</th><th width="42%">原生 Display Options 菜单集成</th></tr>
+<tr>
+<td width="58%" valign="top"><img src="docs/assets/companion-inbox-zh.png" width="100%" alt="AGY Project Sidebar 收件箱分区与悬停待续、延后浮层、已完成按钮，以及下方折叠延后区与 Idle"></td>
+<td width="42%" valign="top"><img src="docs/assets/companion-menu-zh.png" width="100%" alt="Antigravity 原生 Display Options 菜单内置 Status + Requirement 分组、收件箱工作流开关与 24h 自动退场时限"></td>
+</tr>
+</table>
+
 - **多维顺序分组（`Group By` 扩展）**：直接在官方 `Display Options -> Group By` 菜单中接入 `Requirement` 维度（如 `Status + Requirement`、`Project + Requirement`），支持多层折叠与原生行渲染，不在侧边栏额外加搜索条或工具栏。
 - **收件箱工作流（`Inbox` / `待续` / `延后` / `24h` 自动退场）**：将「点开消蓝点（已读）」与「办完归档（`Settle`）」拆开，悬停即可一键标记已完成、锁定待续保留或预设延后唤醒，并支持 5 秒内一键撤销。
 - **零冲突平滑共存**：同样以标准用户态 Sidecar + CDP 插件运行（`~/.gemini/config/plugins/agy-project-sidebar/`），不修改任何 Antigravity 安装包文件，重启和软件升级均不丢失，与 `agy-context-dashboard` 互不冲突。

@@ -237,6 +237,14 @@ Desktop: `~/.gemini/antigravity/sidecar_data/antigravity-pulse/panel/data/usage-
 
 Pair this dashboard with [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar) if you manage many concurrent conversations in Antigravity Desktop:
 
+<table>
+<tr><th width="58%">Inbox / Follow-up / Snooze Triage</th><th width="42%">Native Display Options Menu</th></tr>
+<tr>
+<td width="58%" valign="top"><img src="docs/assets/companion-inbox.png" width="100%" alt="AGY Project Sidebar Inbox section with hover Follow-up, Snooze popover, and Settle controls above collapsed Snoozed and Idle"></td>
+<td width="42%" valign="top"><img src="docs/assets/companion-menu.png" width="100%" alt="Antigravity official Display Options menu extended with Status + Requirement Group By, Inbox Triage toggle, and 24h auto-retire setting"></td>
+</tr>
+</table>
+
 - **Ordered Multi-Select `Group By`**: Extends Antigravity's native `Display Options -> Group By` menu with a `Requirement` dimension (e.g., `Status + Requirement`, `Project + Requirement`) and nested collapsible hierarchy sections without adding extra sidebar toolbars.
 - **Inbox Triage (`Inbox` / `Follow-up` / `Snooze` / `24h` Auto-retire)**: Decouples opening a thread (`Unread`) from finishing it (`Settle`), includes hover actions with `5s` Undo, and keeps ongoing follow-ups or snoozed tasks organized above `Idle`.
 - **Clean Coexistence**: Runs as an independent user-space Sidecar + CDP plugin (`~/.gemini/config/plugins/agy-project-sidebar/`), never modifies host Antigravity installation bundles, and runs smoothly alongside `agy-context-dashboard`.
