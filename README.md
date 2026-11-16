@@ -12,11 +12,13 @@ Keep the summary visible. Hover for the details.
 [![Antigravity 2.21.1 / 2.22.0](https://img.shields.io/badge/Antigravity-2.21.1%20%2F%202.22.0-c5a0ff?style=flat-square&labelColor=252936)](COMPATIBILITY.md)
 [![MIT](https://img.shields.io/badge/license-MIT-d4d9e6?style=flat-square&labelColor=252936)](LICENSE)
 
-[Preview](#preview) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-status-line) · [Install](#install) · [Enable or remove](#plug-and-unplug) · [Compatibility](#compatibility) · [FAQ](#faq) · [中文](README.zh-CN.md)
+[Preview](#preview) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-status-line) · [Install](#install) · [Enable or remove](#plug-and-unplug) · [Companion Sidebar](#companion-sidebar) · [Compatibility](#compatibility) · [FAQ](#faq) · [中文](README.zh-CN.md)
 
 </div>
 
 > **Community Continuation Fork:** This repository (**`agy-context-dashboard`**) continues maintaining **Antigrative Dashboard** (`antigravity-pulse`) under the original [MIT License](LICENSE) starting from `v0.8.12`, after the original upstream repository (`YOU-SHOULD-KNOW-ME/antigrative-dashboard`) went offline (404). Existing user settings, `history-v1`, `usage-v1`, and IDE storage identities remain unchanged.
+>
+> **Companion Sidebar Plugin:** If you also want multi-select `Group By` (such as `Status + Requirement`) and a decoupled **Inbox / Follow-up / Snooze / 24h Auto-retire** workflow in Antigravity's left conversation sidebar, check out [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar). It uses the same non-invasive Sidecar + CDP architecture and coexists cleanly alongside this dashboard.
 
 **v0.8.16:** Add Claude 4.5 (`200K`) and Claude 4.6–5.5 (`1M`) context references, cross-surface `word/` / `@tag` / `perplexity/*` model normalization, unified `3p` `Claude` quota labels, `agy 1.5.x` CLI `statusLine` cache-rate & `Argon` weekly quota parity, and `install --with-cli` lifecycle sync ([`#3`](https://github.com/wycocoyu/agy-context-dashboard/issues/3), [`#4`](https://github.com/wycocoyu/agy-context-dashboard/issues/4)) on top of the `v0.8.15` upstream `v0.8.20` merge baseline (SQLite background collection, subagent composer isolation, updater `DirectoryAnchor`, Windows loopback hardening). [Release notes](https://github.com/wycocoyu/agy-context-dashboard/releases/tag/v0.8.16) · [Changelog](CHANGELOG.md).
 
@@ -230,6 +232,20 @@ The first-use introduction explains history import, coverage and privacy. **Got 
 Opening **View token usage** or clicking its top-right **Refresh usage** button requests historical synchronization. Ordinary polling, card refreshes and quota resets do not start a history scan. Each import consumes a stable, bounded queue in short slices; new top-level conversations wait for the next requested pass, and unreadable or over-budget records leave coverage partial. New completed requests from the current conversation are still recorded during normal polling. The local `usage-v1` ledger deduplicates requests per account and keeps only time, model, Token counters and hashed identifiers; no prompts, replies or credentials. Desktop and IDE have separate ledgers. Deleting a chat does not subtract usage already recorded. This is observed local usage, not a provider bill; missing/deleted historical data may leave gaps. Days/months use UTC+8 and weeks start Monday.
 
 Desktop: `~/.gemini/antigravity/sidecar_data/antigravity-pulse/panel/data/usage-v1/` (the host may override the data directory). IDE: `User/globalStorage/you-should-know-me.antigrative-dashboard-ide/usage-v1/` under its profile. Stop the plugin before deleting its ledger; available conversations can be imported again by opening the usage window after restart. `history-v1` remains the separate latest-per-conversation statistics store. [Accounting, cleanup and limitations](docs/USAGE.md).
+
+## Companion Sidebar
+
+Pair this dashboard with [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar) if you manage many concurrent conversations in Antigravity Desktop:
+
+- **Ordered Multi-Select `Group By`**: Extends Antigravity's native `Display Options -> Group By` menu with a `Requirement` dimension (e.g., `Status + Requirement`, `Project + Requirement`) and nested collapsible hierarchy sections without adding extra sidebar toolbars.
+- **Inbox Triage (`Inbox` / `Follow-up` / `Snooze` / `24h` Auto-retire)**: Decouples opening a thread (`Unread`) from finishing it (`Settle`), includes hover actions with `5s` Undo, and keeps ongoing follow-ups or snoozed tasks organized above `Idle`.
+- **Clean Coexistence**: Runs as an independent user-space Sidecar + CDP plugin (`~/.gemini/config/plugins/agy-project-sidebar/`), never modifies host Antigravity installation bundles, and runs smoothly alongside `agy-context-dashboard`.
+
+```bash
+git clone https://github.com/wycocoyu/agy-project-sidebar.git
+cd agy-project-sidebar
+python3 manage.py install
+```
 
 ## Compatibility
 

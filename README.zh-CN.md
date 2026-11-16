@@ -12,11 +12,13 @@
 [![Antigravity 2.21.1 / 2.22.0](https://img.shields.io/badge/Antigravity-2.21.1%20%2F%202.22.0-c5a0ff?style=flat-square&labelColor=252936)](COMPATIBILITY.md)
 [![MIT](https://img.shields.io/badge/license-MIT-d4d9e6?style=flat-square&labelColor=252936)](LICENSE)
 
-[看看效果](#看看效果) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-状态栏) · [开始安装](#安装) · [启用与停用](#可插拔) · [兼容性](#兼容性) · [常见问题](#常见问题)
+[看看效果](#看看效果) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-状态栏) · [开始安装](#安装) · [启用与停用](#可插拔) · [配套侧边栏](#配套侧边栏) · [兼容性](#兼容性) · [常见问题](#常见问题)
 
 </div>
 
 > **社区接续维护声明：** 原上游仓库 `YOU-SHOULD-KNOW-ME/antigrative-dashboard` 已不可访问（404），本仓库已更名为 **`wycocoyu/agy-context-dashboard`** 并在原 [MIT 协议](LICENSE) 下从 `v0.8.12` 基线接续维护与持续更新，完整保留原版权署名及现有用户配置、`history-v1`、`usage-v1` 与 IDE 存储路径兼容性。
+>
+> **配套侧边栏插件推荐：** 如果你还希望在 Antigravity 左侧会话栏按需求聚合会话、使用类似收件箱的待办确认工作流，欢迎一并体验 [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar)。它采用同样的无侵入 Sidecar + CDP 架构，与本仪表盘完全共存、互不干扰。
 
 **v0.8.16：** 在 `v0.8.15`（上游 `v0.8.20` 后台采集与子代理隔离基线）之上，正式发布 Claude 4.5（`200K`）与 Claude 4.6–5.5（`1M`）上下文参考、跨端 `word/` 与 `@` 日期标签及 `perplexity/*` 模型别名规范化、统一 `3p` `Claude` 额度标签、`agy 1.5.x` 命令行缓存率与 `Argon` 周额度适配，以及 `install --with-cli` 同步安装与过期提醒（[`#3`](https://github.com/wycocoyu/agy-context-dashboard/issues/3)、[`#4`](https://github.com/wycocoyu/agy-context-dashboard/issues/4)）。[发布说明](https://github.com/wycocoyu/agy-context-dashboard/releases/tag/v0.8.16) · [变更记录](CHANGELOG.md)。
 
@@ -233,6 +235,20 @@ Antigravity 的 `inputTokens` 是未缓存输入。缓存率 = 缓存读取 ÷�
 打开「查看用量统计」，或点击窗口右上角的「刷新用量」按钮，才会请求历史同步；普通轮询、卡片刷新和额度重置不会启动历史扫描。每轮导入使用稳定、有上限的候选队列，分片处理；中途新建的主会话留到下一次请求的导入，不可读取或超出预算的记录保留为部分覆盖。当前对话中新完成的请求仍随正常轮询记录。独立的 `usage-v1` 用量账本按账号去重，只保存时间、模型、Token 计数和哈希标识，不保存正文、回复或凭据。桌面与 IDE 账本独立。删除对话不会扣除已记录用量；这是本地已观察到的消耗，不是供应商账单，缺失或已删除的历史可能无法补齐。天、月按 UTC+8 划分，周一开始一周。
 
 桌面路径：`~/.gemini/antigravity/sidecar_data/antigravity-pulse/panel/data/usage-v1/`（宿主可覆盖数据目录）。IDE 路径：其用户目录下的 `User/globalStorage/you-should-know-me.antigrative-dashboard-ide/usage-v1/`。清理前先停用插件；再次启用并打开用量窗口后，仍可读取的对话可以重新导入。`history-v1` 继续单独保存每个对话最新的统计快照。[统计口径、清理和边界](docs/USAGE.md)。
+
+## 配套侧边栏
+
+如果你在 Antigravity 桌面端里同时推进多条会话、多个需求，可以搭配体验同系列的 [`wycocoyu/agy-project-sidebar`](https://github.com/wycocoyu/agy-project-sidebar)：
+
+- **多维顺序分组（`Group By` 扩展）**：直接在官方 `Display Options -> Group By` 菜单中接入 `Requirement` 维度（如 `Status + Requirement`、`Project + Requirement`），支持多层折叠与原生行渲染，不在侧边栏额外加搜索条或工具栏。
+- **收件箱工作流（`Inbox` / `待续` / `延后` / `24h` 自动退场）**：将「点开消蓝点（已读）」与「办完归档（`Settle`）」拆开，悬停即可一键标记已完成、锁定待续保留或预设延后唤醒，并支持 5 秒内一键撤销。
+- **零冲突平滑共存**：同样以标准用户态 Sidecar + CDP 插件运行（`~/.gemini/config/plugins/agy-project-sidebar/`），不修改任何 Antigravity 安装包文件，重启和软件升级均不丢失，与 `agy-context-dashboard` 互不冲突。
+
+```bash
+git clone https://github.com/wycocoyu/agy-project-sidebar.git
+cd agy-project-sidebar
+python3 manage.py install
+```
 
 ## 兼容性
 
