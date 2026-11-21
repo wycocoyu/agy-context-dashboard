@@ -4,7 +4,9 @@ import {collectionFailure} from './collection-state.mjs';
 import { createHash } from 'node:crypto';
 import { AntigravityClient } from './client.mjs';
 import { quotaMetrics, trajectoryMetrics } from './metrics.mjs';
-import { compositionMetrics, attachTokenBase, tokenBaseMetrics } from './composition.mjs';
+import { compositionMetrics, attachTokenBase, tokenBaseMetrics, hostContextMetrics, attachHostContextUsage } from './composition.mjs';
+import { extractAccountCredits, extractCreditUsageSummary, estimateModelsCost } from './pricing.mjs';
+import { makeFoldCache } from './audit.mjs';
 import { SessionHistory, usableMetrics, reconcileMetrics, safeMetrics } from './history.mjs';
 import { TranscriptReader } from './transcript.mjs';
 import {DelegatedUsage} from './delegated-usage.mjs';
@@ -35,12 +37,16 @@ export class MetricsStore {
   quota = null;
   quotaAt = 0;
   quotaPending = null;
-  // Customization token base (GetTokenBase) is fetched lazily only when the
-  // context card asks for composition details; failures degrade silently.
+  accountCredits = null;
+  // Customization token base (GetTokenBase) and host 8-category tokenGroups
+  // (StreamAgentStateUpdates) are fetched lazily only when contextDetail is requested.
   tokenBase = null;
   tokenBaseAt = 0;
   tokenBasePending = null;
   tokenBaseFailedAt = 0;
+  hostContextCache = makeFoldCache({ maxEntries: 4, idleMs: 20_000 });
+  hostContextPending = new Map();
+  hostContextFailedAt = new Map();
   identity = null;
   serverPid = null;
   summaries = [];
@@ -86,8 +92,9 @@ export class MetricsStore {
       if (!this.owned() || epoch !== this.epoch) throw new Error('后台已重新连接，请等待刷新');
       const email = user.userStatus?.email;
       const identity = email ? createHash('sha256').update(email).digest('hex') : null;
-      if (identity !== this.identity) { this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.client.resetTrajectories?.(); this.quota = null; this.quotaAt = 0; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.sessions.clear(); this.summaries = []; this.summariesAt = 0;this.clearUsagePersistenceErrors(); }
+      if (identity !== this.identity) { this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.client.resetTrajectories?.(); this.quota = null; this.quotaAt = 0; this.accountCredits = null; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.hostContextCache.clear(); this.hostContextFailedAt.clear(); this.sessions.clear(); this.summaries = []; this.summariesAt = 0;this.clearUsagePersistenceErrors(); }
       this.identity = identity;
+      this.accountCredits = extractAccountCredits(user?.userStatus);
       const response = await this.client.call('RetrieveUserQuotaSummary',force?{forceRefresh:true}:{});
       if (!this.owned() || epoch !== this.epoch || identity !== this.identity) throw new Error('后台已重新连接，请等待刷新');
       this.quota = quotaMetrics(response);
@@ -113,6 +120,40 @@ export class MetricsStore {
       } catch { if (this.owned() && epoch === this.epoch) this.tokenBaseFailedAt = Date.now(); return this.tokenBase; }
     })().finally(() => { this.tokenBasePending = null; });
     return this.tokenBasePending;
+  }
+
+  async refreshHostContext(conversationId, mark = '') {
+    if (!GUID.test(conversationId || '') || typeof this.client.streamContextWindowUsage !== 'function') return null;
+    const id = conversationId.toLowerCase();
+    const cached = this.hostContextCache.get(id);
+    if (cached && cached.mark === mark && Date.now() - cached.at < 10_000) return cached.value;
+    if (this.hostContextPending.has(id)) return this.hostContextPending.get(id);
+    const failedAt = this.hostContextFailedAt.get(id) || 0;
+    if (!cached && Date.now() - failedAt < 15_000) return null;
+    const epoch = this.epoch;
+    const run = (async () => {
+      try {
+        const update = await this.client.streamContextWindowUsage(id);
+        if (!this.owned() || epoch !== this.epoch) return cached?.value || null;
+        const hostUsage = hostContextMetrics(update);
+        if (!hostUsage) {
+          this.hostContextFailedAt.set(id, Date.now());
+          return cached?.value || null;
+        }
+        const creditUsage = extractCreditUsageSummary(update?.creditUsageSummary);
+        const value = { hostUsage, creditUsage };
+        this.hostContextCache.set(id, { value, mark, at: Date.now() });
+        this.hostContextFailedAt.delete(id);
+        return value;
+      } catch {
+        if (this.owned() && epoch === this.epoch) this.hostContextFailedAt.set(id, Date.now());
+        return cached?.value || null;
+      }
+    })().finally(() => {
+      if (this.hostContextPending.get(id) === run) this.hostContextPending.delete(id);
+    });
+    this.hostContextPending.set(id, run);
+    return run;
   }
 
   async listConversations(force = false) {
@@ -227,7 +268,7 @@ export class MetricsStore {
       const server = await this.client.discover();
       if (!this.owned()) throw new Error('后台已重新连接，请等待刷新');
       if (server.pid !== this.serverPid) {
-        this.epoch++; this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.quota = null; this.quotaAt = 0; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.sessions.clear(); this.identity = null; this.summaries = []; this.summariesAt = 0; this.serverPid = server.pid;this.clearUsagePersistenceErrors();
+        this.epoch++; this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.quota = null; this.quotaAt = 0; this.accountCredits = null; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.hostContextCache.clear(); this.hostContextFailedAt.clear(); this.sessions.clear(); this.identity = null; this.summaries = []; this.summariesAt = 0; this.serverPid = server.pid;this.clearUsagePersistenceErrors();
       }
       try { await this.refreshQuota(force || quotaRefresh); }
       catch (e) { connection = this.quota ? 'stale' : 'offline'; error = e.message; }
@@ -255,19 +296,45 @@ export class MetricsStore {
       const entry=this.sessions.get(conversationId.toLowerCase());
       if(entry?.collection||this.background?.state(conversationId.toLowerCase()))collection={...entry?.collection,...this.background?.state(conversationId.toLowerCase()),freshness:usableMetrics(speed)?'saved':'unavailable',lastSuccessAt:entry.lastSuccessAt||null};
     }
-    // Only an explicit context-card request triggers the GetTokenBase RPC.
-    // Later polls keep attaching the cached value so the view never flickers.
+    // Only an explicit context-card request triggers GetTokenBase and
+    // StreamAgentStateUpdates RPCs. Later polls reuse cached values smoothly.
     if (speed?.contextComposition) {
-      if (contextDetail) { try { await this.refreshTokenBase(); } catch {} }
-      if (this.tokenBase) speed = { ...speed, contextComposition: attachTokenBase(speed.contextComposition, this.tokenBase) };
+      const targetId = speed.conversationId || conversationId || null;
+      const hostMark = `${speed.steps ?? ''}:${speed.requests ?? ''}:${speed.lastActiveAt ?? ''}`;
+      if (contextDetail) {
+        await Promise.allSettled([
+          this.refreshTokenBase(),
+          targetId ? this.refreshHostContext(targetId, hostMark) : Promise.resolve(null),
+        ]);
+      }
+      let nextComposition = speed.contextComposition;
+      if (this.tokenBase) nextComposition = attachTokenBase(nextComposition, this.tokenBase);
+      if (targetId) {
+        const cachedHost = this.hostContextCache.get(targetId.toLowerCase())?.value;
+        if (cachedHost?.hostUsage) {
+          nextComposition = attachHostContextUsage(nextComposition, cachedHost.hostUsage, cachedHost.creditUsage);
+        }
+      }
+      if (nextComposition !== speed.contextComposition) speed = { ...speed, contextComposition: nextComposition };
+    }
+    if (speed?.model && speed?.tokens && !speed.estimatedCost) {
+      const est = estimateModelsCost({
+        [speed.model]: {
+          uncached: speed.tokens.uncachedTokens ?? speed.counts?.input ?? 0,
+          cacheRead: speed.tokens.cachedTokens ?? speed.counts?.cacheRead ?? 0,
+          cacheWrite: speed.tokens.cacheWriteTokens ?? speed.counts?.cacheWrite ?? 0,
+          output: speed.tokens.outputTokens ?? speed.counts?.output ?? 0,
+        },
+      });
+      if (est.hasPriced) speed = { ...speed, estimatedCost: est };
     }
     return {
       connection, error, sessionError, collection, serverTime: new Date().toISOString(),
       quotaUpdatedAt: this.quotaAt ? new Date(this.quotaAt).toISOString() : null,
-      groups: this.quota || [], speed, conversations: this.summaries,
+      groups: this.quota || [], accountCredits: this.accountCredits || null, speed, conversations: this.summaries,
       persistenceError: this.persistenceError,
       source: 'Antigravity local API',
     };
   }
-  dispose(){this.disposed=true;this.background?.dispose();this.delegated.dispose();this.transcripts?.reset();this.epoch++;}
+  dispose(){this.disposed=true;this.background?.dispose();this.delegated.dispose();this.transcripts?.reset();this.hostContextCache.dispose();this.hostContextPending.clear();this.epoch++;}
 }

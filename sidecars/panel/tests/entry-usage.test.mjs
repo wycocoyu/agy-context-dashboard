@@ -25,6 +25,8 @@ async function entryFixture(host,url,selection=false){
     'node:http':{createServer(handler){if(host!=='preview')throw Error('Unexpected preview server');http=handler;return {listen(){}};}},
     'node:module':{createRequire:()=>()=>()=>({css:()=>''})},
     'store.mjs':{MetricsStore:Store},'usage.mjs':{DesktopUsage:Usage,UsageLedger:class{}},
+    'audit.mjs':{SessionAuditService:class{async getAudit(){return {};}dispose(){}}},
+    'insights.mjs':{InsightsScanner:class{async overview(){return {};}dispose(){}}},
     'sdk.mjs':{loadSidecarSdk:async()=>({SidecarApp:App,Response:FakeResponse})},
     'runtime-ui.mjs':{RuntimeUi:Ui,makeRendererSource:()=>''},
     'discovery.mjs':{},

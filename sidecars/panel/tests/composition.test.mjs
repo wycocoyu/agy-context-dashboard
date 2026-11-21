@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { tokenBaseMetrics, compositionMetrics, attachTokenBase } from '../composition.mjs';
+import { tokenBaseMetrics, compositionMetrics, attachTokenBase, hostContextMetrics, attachHostContextUsage } from '../composition.mjs';
 import { MetricsStore } from '../store.mjs';
 import { SessionHistory, reconcileMetrics, safeMetrics } from '../history.mjs';
 import { TrajectoryJson } from '../trajectory-json.mjs';
@@ -306,5 +306,103 @@ test('trend dedup skips duplicate request ids even when usage signature differs'
   const comp=compositionMetrics({context,steps,generators});
   assert.deepEqual(comp.trend.points.map(p=>p.inputTokens),[1000,2000,3000]);
   assert.equal(comp.trend.totalRequests,3);
+  assert.equal(comp.trend.totalMarkers,1);
   assert.deepEqual(comp.trend.markers,[{pointIndex:2,kind:'compaction',before:2000,after:3000}]);
+});
+
+test('tokenBaseMetrics preserves groups contract and exposes nested drilldown + rules budget',()=>{
+  const rich={
+    customizationTokenBase:{
+      totalTokens:16489,
+      groups:[
+        {name:'Rules',type:'TOKEN_TYPE_RULES',numTokens:6642,children:[
+          {name:'/Users/mac/.gemini/AGENTS.md',numTokens:2767},
+          {name:'/Users/mac/.gemini/config/rules/team-resident.md',numTokens:3395},
+        ]},
+        {name:'Mcp Tools',type:'TOKEN_TYPE_MCP_TOOLS',numTokens:160,children:[
+          {name:'openviking',numTokens:102,children:[{name:'find',numTokens:2},{name:'remember',numTokens:4}]},
+        ]},
+      ],
+    },
+    customizationBudget:20000,remainingBudget:10153,rulesBudget:20000,remainingRulesBudget:13358,
+  };
+  const base=tokenBaseMetrics(rich);
+  assert.deepEqual(base.groups,[{name:'Rules',tokens:6642},{name:'Mcp Tools',tokens:160}]);
+  assert.equal(base.rulesBudget,20000);
+  assert.equal(base.remainingRulesBudget,13358);
+  assert.equal(base.drilldown[0].children[0].name,'/Users/mac/.gemini/config/rules/team-resident.md');
+  assert.equal(base.drilldown[1].children[0].children[0].name,'remember');
+});
+
+test('hostContextMetrics and attachHostContextUsage provide authoritative 8-category host breakdown',()=>{
+  const hostUpdate={
+    update:{
+      contextWindowUsage:{
+        generatorMetadataIndex:12,lastStepIndex:55,estimatedTokensUsed:100000,maxContextTokens:512000,
+        tokenGroups:[
+          {name:'System Prompt',type:'TOKEN_TYPE_SYSTEM_PROMPT',numTokens:5000},
+          {name:'Mcp Tools',type:'TOKEN_TYPE_MCP_TOOLS',numTokens:300},
+          {name:'Subagents',type:'TOKEN_TYPE_SUBAGENTS',numTokens:400},
+          {name:'Skills',type:'TOKEN_TYPE_SKILLS',numTokens:9300},
+          {name:'Plugins',type:'TOKEN_TYPE_PLUGINS',numTokens:1500},
+          {name:'Rules',type:'TOKEN_TYPE_RULES',numTokens:6500},
+          {name:'Tools',type:'TOKEN_TYPE_TOOLS',numTokens:7000},
+          {name:'Chat Messages',type:'TOKEN_TYPE_CHAT_MESSAGES',numTokens:70000},
+        ],
+      },
+    },
+  };
+  const hostUsage=hostContextMetrics(hostUpdate);
+  assert.equal(hostUsage.groups.length,8);
+  assert.equal(hostUsage.usedTokens,100000);
+  const comp=compositionMetrics({
+    context:{usedTokens:95000,maxTokens:512000},
+    steps:[stepUsage('USER_INPUT',2000),{type:'CORTEX_STEP_TYPE_PLANNER_RESPONSE',metadata:{modelUsage:{inputTokens:'90000',thinkingOutputTokens:'6000',responseOutputTokens:'2000'}}}],
+    generators:[],
+  });
+  const merged=attachHostContextUsage(attachTokenBase(comp,tokenBaseMetrics(tokenBaseResponse)),hostUsage);
+  assert.equal(merged.source,'host-token-groups');
+  assert.equal(merged.usedTokens,100000);
+  assert.equal(merged.customization.available,true);
+  assert.equal(merged.segments.filter(s=>s.id!=='remaining').length,8);
+  assert.ok(Math.abs(merged.segments.reduce((n,s)=>n+s.fraction,0)-1)<1e-9);
+  assert.ok(Array.isArray(merged.chatBreakdown)&&merged.chatBreakdown.length>=2);
+});
+
+test('MetricsStore lazily calls streamContextWindowUsage on contextDetail and captures GetUserStatus accountCredits',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'ag-host-ctx-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  let streamCalls=0;
+  const raw={trajectory:{cascadeId:GUID,steps:[{type:'CORTEX_STEP_TYPE_USER_INPUT',metadata:{createdAt:'2026-11-21T08:00:00Z',modelUsage:{inputTokens:'3000'}}}],generatorMetadata:[{stepIndices:[0],chatModel:{modelDisplayName:'Gemini 4 Neon (High)',usage:{messageId:'m1',inputTokens:'1000',cacheReadTokens:'3000',outputTokens:'500',apiProvider:'API_PROVIDER_GOOGLE_GEMINI'},chatStartMetadata:{contextWindowMetadata:{estimatedTokensUsed:100000,maxContextTokens:512000}}}}]},numTotalSteps:1};
+  const client={
+    call:async method=>{
+      if(method==='GetUserStatus')return{userStatus:{email:'a@example.test',planStatus:{availablePromptCredits:500,availableFlowCredits:100,planInfo:{planName:'Pro',monthlyPromptCredits:50000,monthlyFlowCredits:150000}}}};
+      if(method==='RetrieveUserQuotaSummary')return{response:{groups:[]}};
+      if(method==='GetTokenBase')return tokenBaseResponse;
+      throw new Error('unexpected '+method);
+    },
+    streamContextWindowUsage:async()=>{
+      streamCalls++;
+      return{
+        contextWindowUsage:{
+          estimatedTokensUsed:100000,maxContextTokens:512000,
+          tokenGroups:[
+            {name:'System Prompt',type:'TOKEN_TYPE_SYSTEM_PROMPT',numTokens:5000},
+            {name:'Chat Messages',type:'TOKEN_TYPE_CHAT_MESSAGES',numTokens:95000},
+          ],
+        },
+      };
+    },
+    discover:async()=>({pid:1}),trajectory:async()=>raw,resetTrajectories(){},
+  };
+  const store=new MetricsStore(client,{history:new SessionHistory(directory),transcripts:null});
+  t.after(()=>store.dispose());
+  const plain=await store.snapshot({conversationId:GUID});
+  assert.equal(streamCalls,0);
+  assert.equal(plain.accountCredits.availablePromptCredits,500);
+  assert.equal(plain.accountCredits.availableFlowCredits,100);
+  const detailed=await store.snapshot({conversationId:GUID,contextDetail:true});
+  assert.equal(streamCalls,1);
+  assert.equal(detailed.speed.contextComposition.source,'host-token-groups');
+  assert.equal(detailed.speed.contextComposition.customization.available,true);
+  assert.ok(detailed.speed.estimatedCost.hasPriced);
 });

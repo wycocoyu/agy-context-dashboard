@@ -5,6 +5,8 @@ import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { MetricsStore } from './store.mjs';
 import { DesktopUsage } from './usage.mjs';
+import { SessionAuditService } from './audit.mjs';
+import { InsightsScanner } from './insights.mjs';
 import { loadSidecarSdk } from './sdk.mjs';
 import { RuntimeUi, makeRendererSource } from '../../compat/runtime-ui.mjs';
 import { agentExecutables, platformPaths } from '../../compat/platform.mjs';
@@ -28,6 +30,8 @@ let settingsCache={},settingsAt=-Infinity;
 const owns=()=>(!ownership||ownership.owns())&&settingsCache.enabled!==false;
 const store = new MetricsStore(undefined,{owns});
 const usage=new DesktopUsage(store,undefined,{host:'app',owns});
+const auditService = new SessionAuditService(store.client);
+const insightsScanner = new InsightsScanner();
 store.onTrajectory=async(scope,id,raw,options={})=>{
   const {isCurrent=()=>true}=options;
   if(isCurrent()!==true)return;
@@ -51,6 +55,37 @@ const metrics = async input => {
   }
   const base=await store.snapshot(input);if(input?.usageSync===true)void usage.sync(true);
   return {...base,...(liveComposerModel?{composerModel:liveComposerModel}:{}),usage:await usage.snapshot({sync:input?.usageSync===true,scope:prefs?.usageScope||'local',groups:base.groups}),preferences:prefs,theme,integration:integration.health,update};
+};
+const sessionAudit = async input => {
+  if (ownership && !await ownership.isOwner()) throw Error('Sidecar ownership changed');
+  runtimeSettings();
+  let conversationId = input?.conversationId || null;
+  if (!conversationId) {
+    const list = await store.listConversations(input?.force === true).catch(() => store.summaries || []);
+    conversationId = list[0]?.id || null;
+  }
+  if (!conversationId) return { version: 1, conversationId: null, totalSteps: 0, totalFiles: 0, totalCommands: 0, counts: { user: 0, thinking: 0, tools: 0, answer: 0, compactions: 0 }, truncated: false, files: [], commands: [], steps: [] };
+  return auditService.getAudit(conversationId, { force: input?.force === true });
+};
+const sessionInsights = async input => {
+  if (ownership && !await ownership.isOwner()) throw Error('Sidecar ownership changed');
+  runtimeSettings();
+  let liveSummaries = store.client.reader?.summaries || null;
+  try {
+    await store.listConversations(input?.force === true);
+    liveSummaries = store.client.reader?.summaries || liveSummaries;
+  } catch {}
+  if (!store.accountCredits) {
+    try { await store.refreshQuota(false); } catch {}
+  }
+  return insightsScanner.overview({
+    force: input?.force === true,
+    liveSummaries,
+    accountCredits: store.accountCredits || null,
+    status: ['all', 'active', 'archived'].includes(input?.status) ? input.status : 'all',
+    sort: ['recent', 'tokens', 'context', 'cost'].includes(input?.sort) ? input.sort : 'recent',
+    query: typeof input?.query === 'string' ? input.query.slice(0, 80) : '',
+  });
 };
 const usageSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','usage-ui.cjs'),'utf8');return `window.__agPulseUsageFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
 const updateSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','update-ui.cjs'),'utf8');return `window.__agPulseUpdateFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
@@ -159,6 +194,8 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.page('/theme.js',themeModule);
   app.api('/theme.css',()=>new Response(themeCss(),{contentType:'text/css'}),'GET');
   app.api('/api/metrics', data => metrics({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1', quotaRefresh: data.quotaRefresh === true || data.quotaRefresh === '1', ...(data.contextDetail === true || data.contextDetail === '1' ? { contextDetail: true } : {}), ...(data.usageOnly === true || data.usageOnly === '1' ? { usageOnly: true } : {}), ...(data.usageScope === 'local' || data.usageScope === 'account' ? { usageScope: data.usageScope } : {}) }), 'GET');
+  app.api('/api/session-audit', data => sessionAudit({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1' }), 'GET');
+  app.api('/api/insights', data => sessionInsights({ force: data.force === true || data.force === '1', status: data.status, sort: data.sort, query: data.query }), 'GET');
   app.api('/api/integration', () => integration.health, 'GET');
   app.api('/api/preferences',()=>preferences.snapshot(),'GET');
   app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
@@ -173,7 +210,7 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   const passiveUpdateTimer=setInterval(()=>{if(owns()&&typeof updater?.checkPassive==='function')void updater.checkPassive().catch(()=>{});},6*60*60*1000);passiveUpdateTimer.unref?.();
   const shutdown=async()=>{
     clearTimeout(passiveUpdateBoot);clearInterval(passiveUpdateTimer);
-    usage.dispose();store.dispose();
+    auditService.dispose();insightsScanner.dispose();usage.dispose();store.dispose();
     const exitTimer=setTimeout(()=>process.exit(0),2000);exitTimer.unref();
     await integration.stop();ownership.stop();process.exit(0);
   };
@@ -221,6 +258,36 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
       if (req.headers.origin && req.headers.origin !== `http://${host}`) { res.writeHead(403); res.end(); return; }
       try { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); const scopeParam = url.searchParams.get('usageScope'); res.end(JSON.stringify(await metrics({ conversationId: url.searchParams.get('conversationId'), force: url.searchParams.get('force') === '1', quotaRefresh: url.searchParams.get('quotaRefresh') === '1', ...(url.searchParams.get('contextDetail') === '1' ? { contextDetail: true } : {}), ...(url.searchParams.get('usageOnly') === '1' ? { usageOnly: true } : {}), ...(scopeParam === 'local' || scopeParam === 'account' ? { usageScope: scopeParam } : {}) }))); }
       catch { res.writeHead(500); res.end('{"error":"数据暂时不可用"}'); }
+      return;
+    }
+    if (url.pathname === '/api/session-audit') {
+      if (req.headers.origin && req.headers.origin !== `http://${host}`) { res.writeHead(403); res.end(); return; }
+      try {
+        const result = await sessionAudit({ conversationId: url.searchParams.get('conversationId'), force: url.searchParams.get('force') === '1' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        const badId = /无效/.test(err?.message || '');
+        res.writeHead(badId ? 400 : 500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: badId ? '会话标识无效' : '审计数据暂时不可用' }));
+      }
+      return;
+    }
+    if (url.pathname === '/api/insights') {
+      if (req.headers.origin && req.headers.origin !== `http://${host}`) { res.writeHead(403); res.end(); return; }
+      try {
+        const result = await sessionInsights({
+          force: url.searchParams.get('force') === '1',
+          status: url.searchParams.get('status') || 'all',
+          sort: url.searchParams.get('sort') || 'recent',
+          query: url.searchParams.get('query') || '',
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(result));
+      } catch {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: '洞察数据暂时不可用' }));
+      }
       return;
     }
     if (url.pathname === '/api/integration') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(integration.health)); return; }

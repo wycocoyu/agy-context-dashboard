@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { request } from 'node:http';
+import { StringDecoder } from 'node:string_decoder';
 import {setImmediate as yieldStream} from 'node:timers/promises';
 import { platformPaths } from '../../compat/platform.mjs';
 import { discoverProcesses,httpLogPorts,readLogTail,probeLoopbackPort,isProcessAlive,resolveDaemonCredential } from './discovery.mjs';
@@ -7,6 +8,27 @@ import { TrajectoryJson } from './trajectory-json.mjs';
 import { TrajectoryReader } from './trajectory-reader.mjs';
 
 const SERVICE = '/exa.language_server_pb.LanguageServerService/';
+const STREAM_STATE_PROJECTION = {
+  update: {
+    conversationId: 'scalar',
+    contextWindowUsage: {
+      generatorMetadataIndex: 'scalar',
+      lastStepIndex: 'scalar',
+      estimatedTokensUsed: 'scalar',
+      maxContextTokens: 'scalar',
+      tokenGroups: { '*': { name: 'scalar', type: 'scalar', source: 'scalar', numTokens: 'scalar' } },
+    },
+    creditUsageSummary: {
+      consumedCredits: {
+        '*': {
+          credits: { '*': { creditType: 'scalar', creditAmount: 'scalar', minimumCreditAmountForUsage: 'scalar' } },
+          firstStepIndex: 'scalar',
+          lastStepIndex: 'scalar',
+        },
+      },
+    },
+  },
+};
 function serverFromPorts(logPorts, processes, { daemon = null } = {}) {
   const rows = (Array.isArray(processes) ? processes : [processes]).filter(p => /--standalone\b/.test(p.CommandLine || ''));
   if (rows.length !== 1) throw new Error(rows.length ? '检测到多个 Antigravity 实例，请保留一个' : '未找到 Antigravity 桌面后台');
@@ -182,7 +204,7 @@ export class AntigravityClient {
 
   // Background-only record stream. No complete page array is materialized and
   // asynchronous consumers apply backpressure before the next record is parsed.
-  async streamTrajectoryPage(method,body,{onRecord,isCurrent=()=>true,wallMs=30000}={}) {
+  async streamTrajectoryPage(method,body,{onRecord,isCurrent=()=>true,wallMs=30000,projection=undefined,recordKeys=undefined,maxRetainedBytes=undefined}={}) {
     if(!['GetCascadeTrajectorySteps','GetCascadeTrajectoryGeneratorMetadata'].includes(method)||typeof onRecord!=='function')throw Error('Unsupported statistics stream');
     if(!Number.isSafeInteger(wallMs)||wallMs<30000||wallMs>300000)throw Error('Invalid statistics stream deadline');
     let streamError=null,rejectAbort;
@@ -191,7 +213,12 @@ export class AntigravityClient {
     assertCurrent();const server=await this.discover();assertCurrent();
     const input=JSON.stringify(method==='GetCascadeTrajectoryGeneratorMetadata'?{...body,includeMessages:false}:body);
     let pending=null;
-    const parser=new TrajectoryJson({onRecord:(kind,index,value)=>{if(pending)throw Error('Statistics stream consumer overflow');pending={kind,index,value};}});
+    const parser=new TrajectoryJson({
+      ...(projection?{projection}:{}),
+      ...(recordKeys?{recordKeys}:{}),
+      ...(maxRetainedBytes?{maxRetainedBytes}:{}),
+      onRecord:(kind,index,value)=>{if(pending)throw Error('Statistics stream consumer overflow');pending={kind,index,value};},
+    });
     const started=this.now();let bytes=0,peakRetained=0,req,res,deadline,watch;
     const timeout=()=>Error('Antigravity 本地接口超时');
     const abort=error=>{streamError||=error;rejectAbort(streamError);res?.destroy();req?.destroy(streamError);};
@@ -230,6 +257,124 @@ export class AntigravityClient {
       }
       throw error;
     } finally {clearTimeout(deadline);clearInterval(watch);res?.destroy();req?.destroy();}
+  }
+
+  /**
+   * Read only the first ConnectRPC frame of StreamAgentStateUpdates and discard
+   * heavy trajectory sections on the wire, retaining contextWindowUsage and creditUsageSummary.
+   */
+  async streamContextWindowUsage(conversationId, { timeoutMs = 8000, maxFrameBytes = 256 * 1024 * 1024 } = {}, retry = true) {
+    if (typeof conversationId !== 'string' || !conversationId) return null;
+    const server = await this.discover();
+    try {
+      return await new Promise((resolve, reject) => {
+        const bodyJson = JSON.stringify({
+          conversationId,
+          initialStepsPageBounds: { startIndex: 0, endIndex: 1 },
+          trajectoryVerbosity: 1,
+          disableRehydration: true,
+        });
+        const bodyLen = Buffer.byteLength(bodyJson);
+        const envelope = Buffer.allocUnsafe(5 + bodyLen);
+        envelope[0] = 0;
+        envelope.writeUInt32BE(bodyLen, 1);
+        envelope.write(bodyJson, 5, 'utf8');
+        const started = this.now();
+        let header = Buffer.alloc(0);
+        let frameLen = -1;
+        let frameFlags = 0;
+        let consumed = 0;
+        let settled = false;
+        let res = null;
+        let req = null;
+        const decoder = new StringDecoder('utf8');
+        const parser = new TrajectoryJson({ projection: STREAM_STATE_PROJECTION, maxRetainedBytes: 512 * 1024 });
+        const settle = (err, value = null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(deadline);
+          try { res?.destroy(); } catch {}
+          try { req?.destroy(); } catch {}
+          if (err) reject(err);
+          else resolve(value);
+        };
+        const deadline = setTimeout(() => settle(new Error('Antigravity 本地接口超时')), timeoutMs);
+        deadline.unref();
+        req = request({
+          hostname: '127.0.0.1',
+          port: server.port,
+          method: 'POST',
+          path: SERVICE + 'StreamAgentStateUpdates',
+          agent: false,
+          headers: {
+            'Content-Type': 'application/connect+json',
+            'Connect-Protocol-Version': '1',
+            'x-codeium-csrf-token': server.csrf,
+            'Content-Length': envelope.length,
+          },
+        }, response => {
+          res = response;
+          if (res.statusCode !== 200) {
+            settle(Object.assign(new Error(`Antigravity 接口 StreamAgentStateUpdates 返回 ${res.statusCode}`), { status: res.statusCode }));
+            return;
+          }
+          res.on('error', err => settle(err));
+          res.on('data', chunk => {
+            if (settled) return;
+            try {
+              let offset = 0;
+              if (frameLen < 0) {
+                const need = 5 - header.length;
+                const take = Math.min(need, chunk.length);
+                header = header.length ? Buffer.concat([header, chunk.subarray(0, take)]) : chunk.subarray(0, take);
+                offset += take;
+                if (header.length < 5) return;
+                frameFlags = header[0];
+                frameLen = header.readUInt32BE(1);
+                if (frameFlags !== 0 || frameLen <= 0 || frameLen > maxFrameBytes) {
+                  settle(null, null);
+                  return;
+                }
+              }
+              if (offset < chunk.length && consumed < frameLen) {
+                const take = Math.min(chunk.length - offset, frameLen - consumed);
+                const slice = chunk.subarray(offset, offset + take);
+                consumed += take;
+                const text = decoder.write(slice);
+                if (text) parser.write(text);
+              }
+              if (consumed >= frameLen) {
+                const tail = decoder.end();
+                if (tail) parser.write(tail);
+                const parsed = parser.end();
+                if (this.server === server) this.discoveredAt = this.now();
+                try { this.onRpc?.({ method: 'StreamAgentStateUpdates', bytes: 5 + frameLen, retainedBytes: parser.retained, ms: this.now() - started, streamed: true }); } catch {}
+                settle(null, parsed?.update || null);
+              }
+            } catch (err) {
+              settle(err);
+            }
+          });
+          res.on('end', () => {
+            if (!settled) settle(null, null);
+          });
+        });
+        req.on('error', err => settle(err));
+        req.setTimeout(timeoutMs, () => settle(new Error('Antigravity 本地接口超时')));
+        req.end(envelope);
+      });
+    } catch (error) {
+      const endpointLost = [401, 403].includes(error?.status) || ['ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ENOTCONN'].includes(error?.code);
+      if (endpointLost && this.server === server) {
+        this.server = null; this.discoveryError = error;
+        this.retryAt = Math.max(this.retryAt, this.lastScanAt + 3000);
+      }
+      if (endpointLost && retry) {
+        await this.discover();
+        return this.streamContextWindowUsage(conversationId, { timeoutMs, maxFrameBytes }, false);
+      }
+      throw error;
+    }
   }
 
   resetTrajectories(){this.reader.reset();}

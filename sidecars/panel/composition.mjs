@@ -1,22 +1,127 @@
 // Pure context-composition transforms for the single-session context view
 // (issue #34). No credentials, prompts, or message text enter the public
-// result: per-step usage buckets contribute sanitized numbers only.
+// result: per-step usage buckets and host token groups contribute sanitized numbers only.
 import { tokenCount } from './metrics.mjs';
 
-// The customization layer (rules/skills/subagents/MCP tool definitions) is the
-// only exact figure; dynamic conversation content is an estimate and is scaled
-// onto the host-reported used tokens so the stacked bar always matches the
-// host usage percent. Raw estimates stay visible in segment titles.
+const cleanText = (value, max = 160) => typeof value === 'string'
+  ? value.replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, max)
+  : '';
+
+const HOST_GROUP_IDS = new Map([
+  ['TOKEN_TYPE_SYSTEM_PROMPT', 'systemPrompt'],
+  ['system prompt', 'systemPrompt'],
+  ['TOKEN_TYPE_MCP_TOOLS', 'mcpTools'],
+  ['mcp tools', 'mcpTools'],
+  ['TOKEN_TYPE_SUBAGENTS', 'subagents'],
+  ['subagents', 'subagents'],
+  ['TOKEN_TYPE_SKILLS', 'skills'],
+  ['skills', 'skills'],
+  ['TOKEN_TYPE_PLUGINS', 'plugins'],
+  ['plugins', 'plugins'],
+  ['TOKEN_TYPE_RULES', 'rules'],
+  ['rules', 'rules'],
+  ['TOKEN_TYPE_TOOLS', 'tools'],
+  ['tools', 'tools'],
+  ['TOKEN_TYPE_CHAT_MESSAGES', 'chatMessages'],
+  ['chat messages', 'chatMessages'],
+]);
+
+const HOST_GROUP_ORDER = ['systemPrompt', 'mcpTools', 'subagents', 'skills', 'plugins', 'rules', 'tools', 'chatMessages'];
+
+function sanitizeDrilldownChildren(items, depth = 0) {
+  if (!Array.isArray(items) || depth > 2) return [];
+  return items
+    .map(item => {
+      const name = cleanText(item?.name, 200);
+      const tokens = tokenCount(item?.numTokens ?? item?.tokens);
+      if (!name || tokens === null) return null;
+      const children = depth < 1 ? sanitizeDrilldownChildren(item?.children, depth + 1) : [];
+      return { name, tokens, ...(children.length ? { children } : {}) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, depth === 0 ? 128 : 64);
+}
+
+// The customization layer (rules/skills/subagents/MCP tool definitions) is exact
+// from GetTokenBase; dynamic conversation content is an estimate unless
+// StreamAgentStateUpdates provides authoritative per-category host tokenGroups.
 export function tokenBaseMetrics(response) {
   if (!response || typeof response !== 'object' || Array.isArray(response)) return null;
   const base = response.customizationTokenBase;
   if (!base || typeof base !== 'object' || Array.isArray(base)) return null;
   const totalTokens = tokenCount(base.totalTokens);
   if (totalTokens === null) return null;
-  const groups = Array.isArray(base.groups) ? base.groups
-    .map(group => ({ name: typeof group?.name === 'string' ? group.name.slice(0, 64) : '', tokens: tokenCount(group?.numTokens) }))
-    .filter(group => group.name && group.tokens !== null).slice(0, 16) : [];
-  return { totalTokens, budget: tokenCount(response.customizationBudget), remainingBudget: tokenCount(response.remainingBudget), groups, source: 'GetTokenBase' };
+  const rawGroups = Array.isArray(base.groups) ? base.groups : [];
+  const groups = rawGroups
+    .map(group => ({ name: cleanText(group?.name, 64), tokens: tokenCount(group?.numTokens) }))
+    .filter(group => group.name && group.tokens !== null).slice(0, 16);
+  const drilldown = rawGroups
+    .map(group => {
+      const name = cleanText(group?.name, 64);
+      const tokens = tokenCount(group?.numTokens);
+      if (!name || tokens === null) return null;
+      const type = cleanText(group?.type, 48) || null;
+      const id = HOST_GROUP_IDS.get(type || '') || HOST_GROUP_IDS.get(name.toLowerCase()) || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const children = sanitizeDrilldownChildren(group?.children, 0);
+      return { id, name, type, tokens, children };
+    })
+    .filter(Boolean).slice(0, 16);
+  return {
+    totalTokens,
+    budget: tokenCount(response.customizationBudget),
+    remainingBudget: tokenCount(response.remainingBudget),
+    rulesBudget: tokenCount(response.rulesBudget),
+    remainingRulesBudget: tokenCount(response.remainingRulesBudget),
+    groups,
+    drilldown,
+    source: 'GetTokenBase',
+  };
+}
+
+/**
+ * Normalize StreamAgentStateUpdates 1st-frame contextWindowUsage.tokenGroups[]
+ * into the authoritative 8-category host breakdown.
+ */
+export function hostContextMetrics(input) {
+  const root = input?.contextWindowUsage && typeof input.contextWindowUsage === 'object'
+    ? input.contextWindowUsage
+    : input?.update?.contextWindowUsage && typeof input.update.contextWindowUsage === 'object'
+      ? input.update.contextWindowUsage
+      : input;
+  if (!root || typeof root !== 'object' || Array.isArray(root)) return null;
+  const usedTokens = tokenCount(root.estimatedTokensUsed ?? root.usedTokens);
+  const maxTokens = tokenCount(root.maxContextTokens ?? root.maxTokens);
+  if (usedTokens === null || !maxTokens || !Array.isArray(root.tokenGroups)) return null;
+
+  const byId = new Map();
+  for (const raw of root.tokenGroups) {
+    if (!raw || typeof raw !== 'object') continue;
+    const type = cleanText(raw.type, 48);
+    const name = cleanText(raw.name, 64);
+    const id = HOST_GROUP_IDS.get(type) || HOST_GROUP_IDS.get(name.toLowerCase());
+    const tokens = tokenCount(raw.numTokens ?? raw.tokens);
+    if (!id || tokens === null) continue;
+    const prev = byId.get(id);
+    byId.set(id, {
+      id,
+      name: name || id,
+      type: type || null,
+      source: cleanText(raw.source, 48) || null,
+      tokens: (prev?.tokens || 0) + tokens,
+    });
+  }
+  if (!byId.size) return null;
+
+  const groups = HOST_GROUP_ORDER.map(id => byId.get(id)).filter(Boolean);
+  return {
+    usedTokens,
+    maxTokens,
+    generatorMetadataIndex: tokenCount(root.generatorMetadataIndex),
+    lastStepIndex: tokenCount(root.lastStepIndex),
+    groups,
+    source: 'StreamAgentStateUpdates',
+  };
 }
 
 // Dynamic-layer buckets from per-step usage metadata, classified with the same
@@ -141,19 +246,58 @@ function trendMetrics(steps = [], generators = [], maxPoints = 96) {
   };
 }
 
-export function compositionMetrics({ context = null, steps = [], generators = [], transcript = null, tokenBase = null, maxTrendPoints = 96 } = {}) {
+function hostSegments(usedTokens, maxTokens, hostUsage) {
+  const segments = [];
+  const totalScale = usedTokens > maxTokens ? maxTokens / usedTokens : 1;
+  for (const group of hostUsage.groups) {
+    if (group.tokens > 0) {
+      segments.push({ id: group.id, tokens: group.tokens, fraction: (group.tokens / maxTokens) * totalScale });
+    }
+  }
+  const accounted = hostUsage.groups.reduce((n, g) => n + g.tokens, 0);
+  if (usedTokens > accounted) {
+    const other = usedTokens - accounted;
+    segments.push({ id: 'other', tokens: other, fraction: (other / maxTokens) * totalScale });
+  }
+  const filled = segments.reduce((n, s) => n + s.fraction, 0);
+  segments.push({ id: 'remaining', tokens: Math.max(0, maxTokens - usedTokens), fraction: Math.max(0, 1 - filled) });
+  return segments;
+}
+
+function buildCustomizationPayload(tokenBase) {
+  if (!tokenBase) return { available: false, tokens: null, budget: null, remainingBudget: null, rulesBudget: null, remainingRulesBudget: null, groups: null, drilldown: null };
+  return {
+    available: true,
+    tokens: tokenBase.totalTokens,
+    budget: tokenBase.budget,
+    remainingBudget: tokenBase.remainingBudget,
+    rulesBudget: tokenBase.rulesBudget ?? null,
+    remainingRulesBudget: tokenBase.remainingRulesBudget ?? null,
+    groups: tokenBase.groups,
+    drilldown: Array.isArray(tokenBase.drilldown) ? tokenBase.drilldown : null,
+  };
+}
+
+function chatSubBreakdown(parts, chatTokens) {
+  if (!Array.isArray(parts) || !chatTokens || chatTokens <= 0) return null;
+  const chatParts = parts.filter(([id, val]) => ['user', 'thinking', 'reply', 'assistant', 'tool'].includes(id) && val > 0);
+  const sum = chatParts.reduce((n, [, val]) => n + val, 0);
+  if (!sum) return null;
+  return chatParts.map(([id, val]) => ({ id, tokens: Math.round((val / sum) * chatTokens), share: val / sum }));
+}
+
+export function compositionMetrics({ context = null, steps = [], generators = [], transcript = null, tokenBase = null, hostUsage = null, maxTrendPoints = 96 } = {}) {
   if (!context || typeof context !== 'object') return null;
   const usedTokens = tokenCount(context.usedTokens), maxTokens = tokenCount(context.maxTokens);
   if (usedTokens === null || !maxTokens) return null;
   const dynamic = dynamicBuckets({ steps, transcript });
-  return {
-    version: 1, usedTokens, maxTokens, source: dynamic.source, complete: dynamic.complete, parts: dynamic.parts,
-    customization: tokenBase
-      ? { available: true, tokens: tokenBase.totalTokens, budget: tokenBase.budget, remainingBudget: tokenBase.remainingBudget, groups: tokenBase.groups }
-      : { available: false, tokens: null, budget: null, remainingBudget: null, groups: null },
+  const base = {
+    version: 1, usedTokens, maxTokens, source: dynamic.source, dynamicSource: dynamic.source, complete: dynamic.complete, parts: dynamic.parts,
+    customization: buildCustomizationPayload(tokenBase),
     segments: compositionSegments(usedTokens, maxTokens, dynamic, tokenBase),
     trend: trendMetrics(steps, generators, maxTrendPoints),
   };
+  return hostUsage ? attachHostContextUsage(base, hostUsage) : base;
 }
 
 // Lazy enrichment: the composition is recomputed on every session refresh,
@@ -162,6 +306,37 @@ export function compositionMetrics({ context = null, steps = [], generators = []
 // host-reported usage; `parts` is retained in the payload for exactly this.
 export function attachTokenBase(composition, tokenBase) {
   if (!composition || !tokenBase || tokenCount(tokenBase.totalTokens) === null) return composition || null;
-  return { ...composition, customization: { available: true, tokens: tokenBase.totalTokens, budget: tokenBase.budget, remainingBudget: tokenBase.remainingBudget, groups: tokenBase.groups },
-    segments: compositionSegments(composition.usedTokens, composition.maxTokens, { source: composition.source, complete: Boolean(composition.complete), parts: composition.parts }, tokenBase) };
+  const customization = buildCustomizationPayload(tokenBase);
+  if (composition.source === 'host-token-groups') {
+    return { ...composition, customization };
+  }
+  return {
+    ...composition,
+    customization,
+    segments: compositionSegments(composition.usedTokens, composition.maxTokens, { source: composition.dynamicSource || composition.source, complete: Boolean(composition.complete), parts: composition.parts }, tokenBase),
+  };
+}
+
+/**
+ * Attach authoritative 8-category host tokenGroups from StreamAgentStateUpdates
+ * while preserving GetTokenBase customization drilldown and per-request trend.
+ */
+export function attachHostContextUsage(composition, hostUsage, creditUsage = null) {
+  if (!composition) return null;
+  const normalized = hostUsage?.groups ? hostUsage : hostContextMetrics(hostUsage);
+  if (!normalized || !normalized.groups?.length || !normalized.maxTokens) {
+    return creditUsage ? { ...composition, creditUsage } : composition;
+  }
+  const chatGroup = normalized.groups.find(g => g.id === 'chatMessages');
+  return {
+    ...composition,
+    usedTokens: normalized.usedTokens,
+    maxTokens: normalized.maxTokens,
+    source: 'host-token-groups',
+    complete: true,
+    hostGroups: normalized.groups,
+    chatBreakdown: chatSubBreakdown(composition.parts, chatGroup?.tokens || 0),
+    segments: hostSegments(normalized.usedTokens, normalized.maxTokens, normalized),
+    ...(creditUsage ? { creditUsage } : {}),
+  };
 }

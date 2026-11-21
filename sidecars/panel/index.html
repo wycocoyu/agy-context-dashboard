@@ -28,8 +28,19 @@
         <button class="icon-button" id="refresh-button" type="button" data-i18n-aria="refreshStats" aria-label="Refresh statistics" title="Refresh statistics"><svg class="icon"><use href="#refresh"/></svg></button>
       </div>
     </header>
-    <div class="sampled-model"><span data-i18n="contextModel">Sampled model</span><span id="strip-model">—</span></div>
-    <nav class="status-strip" role="tablist" data-i18n-aria="panelDetails" aria-label="Metric details">
+    <div class="panel-subbar">
+      <div class="panel-view-switch" role="tablist" data-i18n-aria="panelViewSwitch" aria-label="Panel view">
+        <button class="panel-view-tab" id="view-session-tab" type="button" role="tab" data-panel-view="session" aria-selected="true" data-i18n="panelViewSession">Session</button>
+        <button class="panel-view-tab" id="view-insights-tab" type="button" role="tab" data-panel-view="insights" aria-selected="false" data-i18n="panelViewInsights">Insights</button>
+      </div>
+      <div class="sampled-model">
+        <span class="sr-only" data-i18n="contextModel">Sampled model</span>
+        <span id="strip-model">—</span>
+        <button class="mini-pill-btn" id="strip-session-reset" type="button" data-i18n-aria="panelResetSession" hidden>×</button>
+        <span class="credits-badge" id="account-credits-badge" hidden></span>
+      </div>
+    </div>
+    <nav class="status-strip" id="session-status-strip" role="tablist" data-i18n-aria="panelDetails" aria-label="Metric details">
       <button class="metric-chip" id="speed-tab" type="button" role="tab" data-card="speed" aria-controls="speed-card" aria-selected="true" tabindex="0">
         <span class="metric-label"><svg class="icon"><use href="#gauge"/></svg><span data-i18n="panelSpeed">Speed</span></span>
         <span class="chip-primary"><strong id="strip-tps">—</strong><span class="unit">tok/s</span></span><span class="chip-secondary" id="session-steps">—</span>
@@ -47,7 +58,7 @@
       <div class="quota-mini" id="five-summary"><div><span>5h</span><strong id="five-summary-balance">—</strong></div><div class="quota-track"><i id="five-summary-fill"></i></div><div class="quota-mini-foot"><span data-i18n="resetIn">Resets in</span><span id="five-summary-countdown">—</span></div></div>
       <div class="quota-mini" id="week-summary"><div><span id="week-summary-label" data-i18n="weekShort">Wk</span><strong id="week-summary-balance">—</strong></div><div class="quota-track"><i id="week-summary-fill"></i></div><div class="quota-mini-foot"><span data-i18n="resetIn">Resets in</span><span id="week-summary-countdown">—</span></div></div>
     </section>
-    <section class="card-stage" data-i18n-aria="panelDetails" aria-label="Metric details">
+    <section class="card-stage" id="session-card-stage" data-i18n-aria="panelDetails" aria-label="Metric details">
       <article class="detail-card" id="speed-card" role="tabpanel" tabindex="0" aria-labelledby="speed-tab">
         <div class="hero-row">
           <div class="hero-main">
@@ -75,12 +86,70 @@
           </div>
         </div>
         <div class="cache-meter" aria-hidden="true"><i id="cache-seg-read"></i><i id="cache-seg-miss"></i><i id="cache-seg-out"></i></div>
-        <dl class="stats-grid cache-stats"><div id="cache-read-cell"><dt data-i18n="cacheRead">Cache read</dt><dd><strong id="cache-read">—</strong><span class="stat-unit" id="cache-read-unit" hidden> toks</span></dd></div><div id="cache-miss-cell"><dt data-i18n="cacheMiss">Uncached input</dt><dd><strong id="cache-miss">—</strong><span class="stat-unit" id="cache-miss-unit" hidden> toks</span></dd></div><div id="cache-output-cell"><dt data-i18n="cacheOutput">Output</dt><dd><strong id="cache-output">—</strong><span class="stat-unit" id="cache-output-unit" hidden> toks</span></dd></div><div class="span-row" id="cache-write-row" hidden><dt data-i18n="cacheWrite">Cache write</dt><dd id="cache-write">—</dd></div><div class="span-row" id="task-own-row" hidden><dt data-i18n="taskOwn">Current agent</dt><dd id="task-own">—</dd></div><div class="span-row" id="task-subagents-row" hidden><dt id="task-subagents-label"></dt><dd id="task-subagents">—</dd></div></dl><p class="card-footnote" id="cache-note" hidden></p>
+        <dl class="stats-grid cache-stats"><div id="cache-read-cell"><dt data-i18n="cacheRead">Cache read</dt><dd><strong id="cache-read">—</strong><span class="stat-unit" id="cache-read-unit" hidden> toks</span></dd></div><div id="cache-miss-cell"><dt data-i18n="cacheMiss">Uncached input</dt><dd><strong id="cache-miss">—</strong><span class="stat-unit" id="cache-miss-unit" hidden> toks</span></dd></div><div id="cache-output-cell"><dt data-i18n="cacheOutput">Output</dt><dd><strong id="cache-output">—</strong><span class="stat-unit" id="cache-output-unit" hidden> toks</span></dd></div><div class="span-row" id="cache-write-row" hidden><dt data-i18n="cacheWrite">Cache write</dt><dd id="cache-write">—</dd></div><div class="span-row" id="session-cost-row" hidden><dt data-i18n="estimatedCostLabel">Estimated cost</dt><dd id="session-cost-value">—</dd></div><div class="span-row" id="task-own-row" hidden><dt data-i18n="taskOwn">Current agent</dt><dd id="task-own">—</dd></div><div class="span-row" id="task-subagents-row" hidden><dt id="task-subagents-label"></dt><dd id="task-subagents">—</dd></div></dl><p class="card-footnote" id="cache-note" hidden></p>
       </article>
       <article class="detail-card" id="context-card" role="tabpanel" tabindex="0" aria-labelledby="context-tab" hidden>
-        <div class="card-heading"><span><svg class="icon"><use href="#gauge"/></svg><span data-i18n="context">Context window</span></span><span class="card-tag" id="context-model">—</span></div>
+        <div class="card-heading"><span><svg class="icon"><use href="#gauge"/></svg><span data-i18n="context">Context window</span></span><span class="context-heading-right"><button class="mini-pill-btn" id="context-audit-toggle" type="button" aria-expanded="false" data-i18n="auditButton" hidden>Audit</button><span class="card-tag" id="context-model">—</span></span></div>
         <div class="context-hero-row"><strong id="context-summary">—</strong><span class="context-hero-meta"><span class="context-compaction-pill" id="context-compaction-pill" hidden></span><span id="context-tokens">—</span></span></div>
         <div class="quota-track" role="progressbar" data-i18n-aria="context" id="context-track"><i id="context-fill"></i></div>
+        <section class="context-composition" id="panel-context-composition" hidden>
+          <div class="composition-head">
+            <span data-i18n="compositionTitle">Context composition</span>
+            <span class="composition-head-right">
+              <span class="tag" id="panel-composition-source"></span>
+              <span class="mini-seg" role="group" data-i18n-aria="compositionViewToggle">
+                <button class="mini-seg-btn" id="comp-view-bar" type="button" aria-pressed="true" data-i18n="compositionViewBar">Bar</button>
+                <button class="mini-seg-btn" id="comp-view-list" type="button" aria-pressed="false" data-i18n="compositionViewList">List</button>
+              </span>
+            </span>
+          </div>
+          <div class="composition-meter" id="panel-composition-meter" aria-hidden="true"></div>
+          <div class="composition-legend" id="panel-composition-legend"></div>
+          <div class="token-base-drilldown" id="panel-token-base-drilldown" hidden>
+            <button class="drilldown-toggle" id="token-base-toggle" type="button" aria-expanded="false">
+              <span id="token-base-toggle-label">Customization drilldown</span>
+              <span class="drilldown-summary" id="token-base-toggle-summary"></span>
+            </button>
+            <div class="drilldown-body" id="token-base-tree" hidden></div>
+          </div>
+        </section>
+        <section class="context-composition" id="panel-context-trend" hidden>
+          <div class="composition-head">
+            <span data-i18n="trendTitle">Context trend</span>
+            <span class="composition-head-right">
+              <span class="tag" id="panel-trend-sample"></span>
+              <span class="mini-seg" role="group" data-i18n-aria="trendModeToggle">
+                <button class="mini-seg-btn" id="trend-mode-total" type="button" aria-pressed="true" data-i18n="trendModeTotal">Total</button>
+                <button class="mini-seg-btn" id="trend-mode-delta" type="button" aria-pressed="false" data-i18n="trendModeDelta">Delta</button>
+              </span>
+            </span>
+          </div>
+          <svg id="panel-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="trend-markers-list" id="panel-trend-markers" hidden></div>
+        </section>
+        <section class="audit-section" id="panel-audit-section" hidden>
+          <div class="audit-head">
+            <div class="audit-tabs" role="tablist" data-i18n-aria="auditTitle">
+              <button class="audit-tab-btn" id="audit-tab-files" type="button" role="tab" data-audit-tab="files" aria-selected="true" data-i18n="auditTabFiles">Files</button>
+              <button class="audit-tab-btn" id="audit-tab-commands" type="button" role="tab" data-audit-tab="commands" aria-selected="false" data-i18n="auditTabCommands">Commands</button>
+              <button class="audit-tab-btn" id="audit-tab-steps" type="button" role="tab" data-audit-tab="steps" aria-selected="false" data-i18n="auditTabSteps">Steps</button>
+            </div>
+            <button class="mini-pill-btn" id="audit-refresh-btn" type="button" data-i18n-aria="refreshStats" aria-label="Refresh statistics">↻</button>
+          </div>
+          <div class="audit-status" id="audit-status" hidden></div>
+          <div class="audit-pane" id="audit-pane-files"></div>
+          <div class="audit-pane" id="audit-pane-commands" hidden></div>
+          <div class="audit-pane" id="audit-pane-steps" hidden>
+            <div class="audit-step-filters" id="audit-step-filters">
+              <button class="mini-pill-btn" type="button" data-step-filter="all" aria-pressed="true" data-i18n="auditFilterAll">All</button>
+              <button class="mini-pill-btn" type="button" data-step-filter="thinking" aria-pressed="false" data-i18n="auditFilterThinking">Thinking</button>
+              <button class="mini-pill-btn" type="button" data-step-filter="tools" aria-pressed="false" data-i18n="auditFilterTools">Tools</button>
+              <button class="mini-pill-btn" type="button" data-step-filter="answer" aria-pressed="false" data-i18n="auditFilterAnswer">Answer</button>
+              <button class="mini-pill-btn" type="button" data-step-filter="user" aria-pressed="false" data-i18n="auditFilterUser">User</button>
+            </div>
+            <div class="audit-steps-list" id="audit-steps-list"></div>
+          </div>
+        </section>
         <div class="quota-spotlight-head" id="panel-active-group"><i class="spot-dot" aria-hidden="true"></i><strong class="spot-name" id="panel-group-name">—</strong><span class="pace-badge" id="panel-quota-pace" hidden><i class="pace-dot" aria-hidden="true"></i><span id="panel-quota-pace-text"></span></span></div>
         <div class="quota-details">
       <section class="quota-section" id="five-details" role="region" data-i18n-aria="five" aria-label="Five-hour quota">
@@ -100,6 +169,55 @@
         </div>
         <div class="quota-siblings" id="panel-quota-siblings" hidden></div>
       </article>
+    </section>
+    <section class="insights-view" id="insights-view" role="tabpanel" aria-labelledby="view-insights-tab" hidden>
+      <div class="insights-toolbar">
+        <input class="insights-search" id="insights-search" type="search" data-i18n-placeholder="insightsSearchPlaceholder" placeholder="Filter sessions…">
+        <select class="insights-select" id="insights-status-filter">
+          <option value="all" data-i18n="insightsAll">All</option>
+          <option value="active" data-i18n="insightsActive">Active</option>
+          <option value="archived" data-i18n="insightsArchived">Archived</option>
+        </select>
+        <select class="insights-select" id="insights-sort">
+          <option value="recent" data-i18n="insightsSortRecent">Recent</option>
+          <option value="tokens" data-i18n="insightsSortTokens">Total tokens</option>
+          <option value="context" data-i18n="insightsSortContext">Context size</option>
+          <option value="cost" data-i18n="insightsSortCost">Estimated cost</option>
+        </select>
+        <button class="mini-pill-btn" id="insights-refresh-btn" type="button" data-i18n="insightsScan">Rescan</button>
+      </div>
+      <div class="insights-credits-bar" id="insights-credits-bar" hidden></div>
+      <div class="insights-status" id="insights-status" hidden></div>
+      <div class="insights-kpis" id="insights-kpis"></div>
+      <div class="insights-panel" id="insights-7d-section">
+        <div class="insights-panel-head"><span data-i18n="insights7dTitle">Last 7 days</span><span class="tag" id="insights-7d-meta"></span></div>
+        <svg class="insights-7d-svg" id="insights-7d-svg" viewBox="0 0 280 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </div>
+      <div class="insights-panel" id="insights-heatmap-section">
+        <div class="insights-panel-head">
+          <span data-i18n="insightsHeatmapTitle">Activity heatmap</span>
+          <span class="mini-seg" role="group">
+            <button class="mini-seg-btn" id="heatmap-metric-sessions" type="button" aria-pressed="true" data-i18n="insightsHeatmapSessions">Sessions</button>
+            <button class="mini-seg-btn" id="heatmap-metric-tokens" type="button" aria-pressed="false" data-i18n="insightsHeatmapTokens">Tokens</button>
+          </span>
+        </div>
+        <div class="insights-heatmap-grid" id="insights-heatmap-grid"></div>
+      </div>
+      <div class="insights-panel" id="insights-comp-section">
+        <div class="insights-panel-head"><span data-i18n="insightsCompTitle">Token composition</span><span class="tag" id="insights-comp-meta"></span></div>
+        <div class="composition-meter" id="insights-comp-meter" aria-hidden="true"></div>
+        <div class="composition-legend" id="insights-comp-legend"></div>
+      </div>
+      <div class="insights-dist-grid">
+        <div class="insights-dist-card"><div class="insights-dist-title" data-i18n="insightsProjects">Projects</div><div class="insights-dist-list" id="insights-dist-projects"></div></div>
+        <div class="insights-dist-card"><div class="insights-dist-title" data-i18n="insightsSkills">Skills loaded</div><div class="insights-dist-list" id="insights-dist-skills"></div></div>
+        <div class="insights-dist-card"><div class="insights-dist-title" data-i18n="insightsTools">Tools invoked</div><div class="insights-dist-list" id="insights-dist-tools"></div></div>
+        <div class="insights-dist-card"><div class="insights-dist-title" data-i18n="insightsCommands">Commands run</div><div class="insights-dist-list" id="insights-dist-commands"></div></div>
+      </div>
+      <div class="insights-panel">
+        <div class="insights-panel-head"><span id="insights-sessions-title">Sessions</span><span class="tag" id="insights-cache-meta"></span></div>
+        <div class="insights-sessions-list" id="insights-sessions-list"></div>
+      </div>
     </section>
     <div class="health-note" id="health-note" role="status">Waiting for the first update</div>
     <div class="health-note" id="integration-note" role="status"></div>
