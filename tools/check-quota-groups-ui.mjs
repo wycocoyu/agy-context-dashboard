@@ -48,7 +48,7 @@ try{
  for(const mode of ['panel','inline','ide']){
   reset();const page=await browser.newPage({viewport:{width:1000,height:800}});page.on('pageerror',error=>errors.push(error.message));
   await page.goto(base+'/'+mode);
-  await page.locator('[data-card="context"]').first().click();
+  await page.locator(mode==='panel'?'[data-card="context"]':'[data-card="quota"]').first().click();
   const scope=mode!=='panel'?page.locator('#ag-pulse-status-bar'):page.locator('.widget');
   const refresh=async()=>{if(mode!=='panel')await page.locator('[data-testid="model-selector-trigger"]').evaluate((e,value)=>e.textContent=value,model);if(mode==='panel')await scope.locator('#refresh-button').click();else await scope.evaluate(el=>el.shadowRoot.querySelector('.refresh').click());};
   const balance=scope.locator('#week-balance'),five=scope.locator(mode==='panel'?'#five-details':'#five-quota-section');

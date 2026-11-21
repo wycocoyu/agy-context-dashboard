@@ -64,6 +64,7 @@ module.exports = function installAgPulseIpc(electron, authorities) {
     if(input.conversationId)url.searchParams.set('conversationId',input.conversationId);
     if(input.force===true)url.searchParams.set('force','1');
     if(input.quotaRefresh===true)url.searchParams.set('quotaRefresh','1');
+    if(input.contextDetail===true)url.searchParams.set('contextDetail','1');
     if(input.usageOnly===true)url.searchParams.set('usageOnly','1');
     if(input.usageScope==='local'||input.usageScope==='account')url.searchParams.set('usageScope',input.usageScope);
     return await new Promise(resolve=>{

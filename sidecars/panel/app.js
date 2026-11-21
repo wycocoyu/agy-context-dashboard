@@ -298,7 +298,7 @@ function render() {
   const context=speed?.context,hasCapacity=typeof context?.usedFraction==='number';
   const transcript=speed?.transcriptStats;
   const compactions=transcript&&['ready','partial'].includes(transcript.status)&&typeof transcript.compactionMarkers==='number'?transcript.compactionMarkers:null;
-  const compSuffix=compactions!==null&&compactions>0?` · 🗜 ${t('contextCompactionCount',{n:compactions})}`:'';
+  const compSuffix=compactions!==null&&compactions>0?` · ${t('contextCompactionSummary',{n:compactions})}`:'';
   $('strip-context').textContent=hasCapacity?`${Math.round(context.usedFraction*100)}%`:'—';
   $('strip-context-size').textContent=context?`${compact(context.usedTokens)} / ${context.maxTokens===null?'—':compact(context.maxTokens)}`:'—';
   $('context-tab').title=(context?t('contextTokens',{used:count(context.usedTokens),max:context.maxTokens===null?'—':count(context.maxTokens)}):t('contextUnknown'))+compSuffix;
@@ -309,7 +309,7 @@ function render() {
   if(compactionPill){
     hidden('context-compaction-pill',!(compactions!==null&&compactions>0));
     if(compactions!==null&&compactions>0){
-      compactionPill.textContent=`🗜 ${t('contextCompactionCount',{n:compactions})}`;
+      text('context-compaction-pill',t('contextCompactionCount',{n:compactions}));
       compactionPill.title=t('contextCompactionsTitle',{n:compactions});
     }
   }

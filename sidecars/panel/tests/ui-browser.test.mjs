@@ -260,19 +260,23 @@ test('font sync, scope switching and quota window reference render end-to-end in
   await evalJs(`() => { document.documentElement.style.setProperty('--ui-font-family', '"Georgia"'); }`);
   await waitUntil(`() => getComputedStyle(document.getElementById('ag-pulse-status-bar').shadowRoot.querySelector('.bar')).fontFamily.includes('Georgia')`, 'inline widget font synced to Georgia');
 
-  // Quota window token rows in inline context card + plural toks units
+  // Quota window token rows in inline quota card + plural toks units
   const quotaText = await evalJs(`() => {
     const sr = document.getElementById('ag-pulse-status-bar').shadowRoot;
     sr.querySelector('[data-card="context"]').click();
+    const contextTokens = sr.getElementById('context-tokens').textContent;
+    sr.querySelector('[data-card="quota"]').click();
     return {
       density: document.getElementById('ag-pulse-status-bar').dataset.density,
-      contextTokens: sr.getElementById('context-tokens').textContent,
+      quotaVisible: !sr.getElementById('quota-card').hidden,
+      contextTokens,
       fiveHidden: sr.getElementById('five-usage').hidden,
       fiveVal: sr.getElementById('five-usage-value').textContent,
       weekVal: sr.getElementById('week-usage-value').textContent,
     };
   }`);
   assert.equal(quotaText.density, 'full');
+  assert.equal(quotaText.quotaVisible, true);
   assert.ok(quotaText.contextTokens.endsWith('toks'), 'contextTokens should use plural toks: ' + quotaText.contextTokens);
   assert.equal(quotaText.fiveHidden, false);
   assert.equal(quotaText.fiveVal, '81.1M toks (约 644.2M 满额)');

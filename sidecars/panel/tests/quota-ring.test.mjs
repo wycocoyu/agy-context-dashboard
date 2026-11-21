@@ -130,7 +130,7 @@ test('composer strip swaps the cache rate for the quota ring and keeps the detai
   assert.ok(widget.includes(':host(.narrow) [data-card=quota] .quota-text{display:none}')&&widget.includes(':host(.narrow) [data-card=quota] svg'),'Narrow windows collapse the ring to its icon');
   assert.ok(widget.includes('[data-quota-dot=warn]::after')&&widget.includes('[data-quota-dot=danger]::after'),'Compact mode flags the other window with a status dot');
   assert.ok(widget.includes("[data-quota-level=warn] .ring-arc{stroke:var(--pulse-warning)}")&&widget.includes("[data-quota-level=danger] .ring-arc{stroke:var(--pulse-danger)}"),'Alert thresholds share the plugin color variables');
-  assert.ok(widget.includes("cardIdFor=name=>name==='quota'?'context-card'"),'The quota chip opens the context card');
+  assert.ok(widget.includes('aria-controls="quota-card"')&&widget.includes('id="quota-card"'),'The quota chip opens its dedicated quota card');
   assert.ok(widget.includes("t('quotaRingTitle')")&&widget.includes("t('remaining')"),'Tooltip and aria label state the remaining semantics');
   assert.ok(widget.includes("['speed','cache','quota','context']"),'Density motion knows the new chip order');
 });

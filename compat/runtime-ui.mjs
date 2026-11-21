@@ -30,6 +30,8 @@ export function validatedInput(value) {
   if (value.usageOnly === true) result.usageOnly = true;
   if (value.usageScope === 'local' || value.usageScope === 'account') result.usageScope = value.usageScope;
   if (value.quotaRefresh === true) result.quotaRefresh = true;
+  // Context-card expansion lazily requests the customization token base.
+  if (value.contextDetail === true) result.contextDetail = true;
   if (typeof value.composerModel === 'string') {
     const composerModel = value.composerModel.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (composerModel) result.composerModel = composerModel;

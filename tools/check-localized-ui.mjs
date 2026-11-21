@@ -66,6 +66,8 @@ try{
       await strip.locator('[data-card=context]').hover();
       await strip.locator('#context-summary').waitFor({state:'visible'});
       assert.match(await strip.locator('#context-summary').textContent(),/44%/);
+      await strip.locator('[data-card=quota]').hover();
+      await strip.locator('#quota-card').waitFor({state:'visible'});
       const expected=key.startsWith('legacy')?'Gemini':'Claude';
       const other=key.startsWith('legacy')?'Claude':'Gemini';
       assert.ok((await strip.locator('#active-group-name').textContent()).includes(expected),'Model selection must read the localized composer control');

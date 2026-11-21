@@ -158,7 +158,7 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.page('/i18n.js',i18nModule);
   app.page('/theme.js',themeModule);
   app.api('/theme.css',()=>new Response(themeCss(),{contentType:'text/css'}),'GET');
-  app.api('/api/metrics', data => metrics({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1', quotaRefresh: data.quotaRefresh === true || data.quotaRefresh === '1', ...(data.usageOnly === true || data.usageOnly === '1' ? { usageOnly: true } : {}), ...(data.usageScope === 'local' || data.usageScope === 'account' ? { usageScope: data.usageScope } : {}) }), 'GET');
+  app.api('/api/metrics', data => metrics({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1', quotaRefresh: data.quotaRefresh === true || data.quotaRefresh === '1', ...(data.contextDetail === true || data.contextDetail === '1' ? { contextDetail: true } : {}), ...(data.usageOnly === true || data.usageOnly === '1' ? { usageOnly: true } : {}), ...(data.usageScope === 'local' || data.usageScope === 'account' ? { usageScope: data.usageScope } : {}) }), 'GET');
   app.api('/api/integration', () => integration.health, 'GET');
   app.api('/api/preferences',()=>preferences.snapshot(),'GET');
   app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
@@ -219,7 +219,7 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (url.pathname === '/api/metrics') {
       if (req.headers.origin && req.headers.origin !== `http://${host}`) { res.writeHead(403); res.end(); return; }
-      try { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); const scopeParam = url.searchParams.get('usageScope'); res.end(JSON.stringify(await metrics({ conversationId: url.searchParams.get('conversationId'), force: url.searchParams.get('force') === '1', quotaRefresh: url.searchParams.get('quotaRefresh') === '1', ...(url.searchParams.get('usageOnly') === '1' ? { usageOnly: true } : {}), ...(scopeParam === 'local' || scopeParam === 'account' ? { usageScope: scopeParam } : {}) }))); }
+      try { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); const scopeParam = url.searchParams.get('usageScope'); res.end(JSON.stringify(await metrics({ conversationId: url.searchParams.get('conversationId'), force: url.searchParams.get('force') === '1', quotaRefresh: url.searchParams.get('quotaRefresh') === '1', ...(url.searchParams.get('contextDetail') === '1' ? { contextDetail: true } : {}), ...(url.searchParams.get('usageOnly') === '1' ? { usageOnly: true } : {}), ...(scopeParam === 'local' || scopeParam === 'account' ? { usageScope: scopeParam } : {}) }))); }
       catch { res.writeHead(500); res.end('{"error":"数据暂时不可用"}'); }
       return;
     }

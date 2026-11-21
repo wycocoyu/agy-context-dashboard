@@ -4,6 +4,7 @@ import {collectionFailure} from './collection-state.mjs';
 import { createHash } from 'node:crypto';
 import { AntigravityClient } from './client.mjs';
 import { quotaMetrics, trajectoryMetrics } from './metrics.mjs';
+import { compositionMetrics, attachTokenBase, tokenBaseMetrics } from './composition.mjs';
 import { SessionHistory, usableMetrics, reconcileMetrics, safeMetrics } from './history.mjs';
 import { TranscriptReader } from './transcript.mjs';
 import {DelegatedUsage} from './delegated-usage.mjs';
@@ -34,6 +35,12 @@ export class MetricsStore {
   quota = null;
   quotaAt = 0;
   quotaPending = null;
+  // Customization token base (GetTokenBase) is fetched lazily only when the
+  // context card asks for composition details; failures degrade silently.
+  tokenBase = null;
+  tokenBaseAt = 0;
+  tokenBasePending = null;
+  tokenBaseFailedAt = 0;
   identity = null;
   serverPid = null;
   summaries = [];
@@ -79,7 +86,7 @@ export class MetricsStore {
       if (!this.owned() || epoch !== this.epoch) throw new Error('后台已重新连接，请等待刷新');
       const email = user.userStatus?.email;
       const identity = email ? createHash('sha256').update(email).digest('hex') : null;
-      if (identity !== this.identity) { this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.client.resetTrajectories?.(); this.quota = null; this.quotaAt = 0; this.sessions.clear(); this.summaries = []; this.summariesAt = 0;this.clearUsagePersistenceErrors(); }
+      if (identity !== this.identity) { this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.client.resetTrajectories?.(); this.quota = null; this.quotaAt = 0; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.sessions.clear(); this.summaries = []; this.summariesAt = 0;this.clearUsagePersistenceErrors(); }
       this.identity = identity;
       const response = await this.client.call('RetrieveUserQuotaSummary',force?{forceRefresh:true}:{});
       if (!this.owned() || epoch !== this.epoch || identity !== this.identity) throw new Error('后台已重新连接，请等待刷新');
@@ -87,6 +94,25 @@ export class MetricsStore {
       this.quotaAt = Date.now();
     })().finally(() => { this.quotaPending = null; });
     return this.quotaPending;
+  }
+
+  // Cached for 10 minutes; a failure retries at most every 15 seconds and
+  // never propagates: composition simply renders without the exact figure.
+  async refreshTokenBase() {
+    if (this.tokenBase && Date.now() - this.tokenBaseAt < 10 * 60 * 1000) return this.tokenBase;
+    if (this.tokenBasePending) return this.tokenBasePending;
+    if (!this.tokenBase && Date.now() - this.tokenBaseFailedAt < 15000) return this.tokenBase;
+    const epoch = this.epoch;
+    this.tokenBasePending = (async () => {
+      try {
+        const value = tokenBaseMetrics(await this.client.call('GetTokenBase', {}));
+        if (!this.owned() || epoch !== this.epoch) return this.tokenBase;
+        if (value === null) { this.tokenBaseFailedAt = Date.now(); return this.tokenBase; }
+        this.tokenBase = value; this.tokenBaseAt = Date.now(); this.tokenBaseFailedAt = 0;
+        return value;
+      } catch { if (this.owned() && epoch === this.epoch) this.tokenBaseFailedAt = Date.now(); return this.tokenBase; }
+    })().finally(() => { this.tokenBasePending = null; });
+    return this.tokenBasePending;
   }
 
   async listConversations(force = false) {
@@ -175,6 +201,9 @@ export class MetricsStore {
       fresh.taskUsage=this.delegated.request(scope,id,raw,{saved:entry.data?.taskUsage,knownIds:fresh.delegatedConversations,force,isCurrent:current});
       // Optional background I/O cannot delay or fail the core metrics request.
       try { if(this.transcripts)fresh.transcriptStats=this.transcripts.request(scope,id,raw); } catch {}
+      // Composition is pure arithmetic over already-collected statistics; the
+      // exact customization figure is attached lazily in snapshot().
+      fresh.contextComposition=compositionMetrics({context:fresh.context,steps:raw.trajectory?.steps,generators:raw.trajectory?.generatorMetadata,transcript:fresh.transcriptStats});
       entry.data = {...reconcileMetrics(entry.data,fresh,entry.savedAt || null),conversationId:id}; entry.updatedAt = Date.now();
       try { const saved = await this.history.save(scope,id,entry.data,{isCurrent:current}); if (saved&&current()) entry.savedAt = saved.savedAt; if (current()) this.persistenceError = null; }
       catch { if(current())this.persistenceError = '统计暂时无法保存到本地'; }
@@ -191,14 +220,14 @@ export class MetricsStore {
     return entry.pending;
   }
 
-  async snapshot({ conversationId, force = false, quotaRefresh = false, selectLatest = true } = {}) {
+  async snapshot({ conversationId, force = false, quotaRefresh = false, selectLatest = true, contextDetail = false } = {}) {
     let connection = 'live', error = null, speed = null, sessionError = null, collection = null;
     try {
       if (!this.owned()) throw new Error('后台已重新连接，请等待刷新');
       const server = await this.client.discover();
       if (!this.owned()) throw new Error('后台已重新连接，请等待刷新');
       if (server.pid !== this.serverPid) {
-        this.epoch++; this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.quota = null; this.quotaAt = 0; this.sessions.clear(); this.identity = null; this.summaries = []; this.summariesAt = 0; this.serverPid = server.pid;this.clearUsagePersistenceErrors();
+        this.epoch++; this.background?.reset();this.delegated.reset();this.transcripts?.reset(); this.quota = null; this.quotaAt = 0; this.tokenBase = null; this.tokenBaseAt = 0; this.tokenBaseFailedAt = 0; this.sessions.clear(); this.identity = null; this.summaries = []; this.summariesAt = 0; this.serverPid = server.pid;this.clearUsagePersistenceErrors();
       }
       try { await this.refreshQuota(force || quotaRefresh); }
       catch (e) { connection = this.quota ? 'stale' : 'offline'; error = e.message; }
@@ -225,6 +254,12 @@ export class MetricsStore {
     if(!collection&&conversationId){
       const entry=this.sessions.get(conversationId.toLowerCase());
       if(entry?.collection||this.background?.state(conversationId.toLowerCase()))collection={...entry?.collection,...this.background?.state(conversationId.toLowerCase()),freshness:usableMetrics(speed)?'saved':'unavailable',lastSuccessAt:entry.lastSuccessAt||null};
+    }
+    // Only an explicit context-card request triggers the GetTokenBase RPC.
+    // Later polls keep attaching the cached value so the view never flickers.
+    if (speed?.contextComposition) {
+      if (contextDetail) { try { await this.refreshTokenBase(); } catch {} }
+      if (this.tokenBase) speed = { ...speed, contextComposition: attachTokenBase(speed.contextComposition, this.tokenBase) };
     }
     return {
       connection, error, sessionError, collection, serverTime: new Date().toISOString(),

@@ -47,7 +47,7 @@ const snapshot=async input=>{
     if(!store.serverPid&&!store.identity){
       try{
         const server=await client.discover();
-        if(server.pid!==store.serverPid){store.epoch++;store.background?.reset();store.delegated.reset();store.transcripts?.reset();store.identity=null;store.quota=null;store.quotaAt=0;store.sessions.clear();store.clearUsagePersistenceErrors();store.serverPid=server.pid;}
+        if(server.pid!==store.serverPid){store.epoch++;store.background?.reset();store.delegated.reset();store.transcripts?.reset();store.identity=null;store.quota=null;store.quotaAt=0;store.tokenBase=null;store.tokenBaseAt=0;store.tokenBaseFailedAt=0;store.sessions.clear();store.clearUsagePersistenceErrors();store.serverPid=server.pid;}
         await store.refreshQuota(false);
       }catch{}
     }
@@ -59,7 +59,7 @@ const snapshot=async input=>{
   else{
     try{
       const server=await client.discover();
-      if(server.pid!==store.serverPid){store.epoch++;store.background?.reset();store.delegated.reset();store.transcripts?.reset();store.identity=null;store.quota=null;store.quotaAt=0;store.sessions.clear();store.clearUsagePersistenceErrors();store.serverPid=server.pid;}
+      if(server.pid!==store.serverPid){store.epoch++;store.background?.reset();store.delegated.reset();store.transcripts?.reset();store.identity=null;store.quota=null;store.quotaAt=0;store.tokenBase=null;store.tokenBaseAt=0;store.tokenBaseFailedAt=0;store.sessions.clear();store.clearUsagePersistenceErrors();store.serverPid=server.pid;}
       await store.refreshQuota(input.force);
       value={connection:'live',speed:null,groups:store.quota||[],quotaUpdatedAt:new Date(store.quotaAt).toISOString()};
     }catch{value={connection:'offline',speed:null,groups:[],error:'IDE local API unavailable'};}

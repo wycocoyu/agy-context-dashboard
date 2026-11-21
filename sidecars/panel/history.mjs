@@ -119,6 +119,7 @@ export function shouldKeepSaved(saved, fresh) {
 
 export function reconcileMetrics(saved, fresh, savedAt = null) {
   if (shouldKeepSaved(saved,fresh)) return {...saved,taskUsage:safeTaskUsage(fresh.taskUsage)||safeTaskUsage(saved.taskUsage),delegatedConversations:fresh.delegatedConversations||saved.delegatedConversations,transcriptStats:fresh.transcriptStats||null,transcriptRestoredFromHistory:false,context:fresh.context || null,contextRestored:false,
+    ...(fresh.contextComposition ? { contextComposition: fresh.contextComposition } : {}),
     restoredFromHistory:true,savedAt};
   const result = {...fresh,contextRestored:false,transcriptRestoredFromHistory:false,restoredFromHistory:false,
     speedRestoredFromHistory:fresh.speedRestoredFromHistory===true,

@@ -181,7 +181,8 @@ async function checkHoverQuotaRefresh(page,host,chip){
   try{
     await chip.hover();
     await Promise.race([arrived,new Promise((_,reject)=>{arrivalTimeout=setTimeout(()=>reject(new Error('Hover quota refresh request did not arrive')),7000);})]);clearTimeout(arrivalTimeout);
-    await host.locator('#context-card').waitFor({state:'visible'});
+    const targetCard=await chip.getAttribute('aria-controls');
+    await host.locator(`#${targetCard}`).waitFor({state:'visible'});
     await spinner.waitFor({state:'visible'});
     assert.equal(await spinner.getAttribute('aria-busy'),'true');
     assert.equal(await spinner.locator('svg').evaluate(e=>getComputedStyle(e).animationName),'pulse-refresh-spin');
@@ -279,7 +280,7 @@ try {
   const page=await browser.newPage({viewport:{width:1000,height:900},deviceScaleFactor:2,colorScheme:'light'});
   page.on('pageerror',error=>errors.push(error.message));
   await page.goto(url+'/toolbar-preview');
-  const host=page.locator('#ag-pulse-status-bar');const contextChip=host.locator('[data-card=context]');
+  const host=page.locator('#ag-pulse-status-bar');const contextChip=host.locator('[data-card=context]');const quotaChip=host.locator('[data-card=quota]');
   await contextChip.waitFor({state:'visible'});
   await page.addStyleTag({content:'.rounded-composer{position:relative;z-index:1}'});
   // The real composer bubbles widget clicks and focuses the editor. Top-layer
@@ -327,23 +328,24 @@ try {
     await contextChip.hover();await host.locator('#card-language-zh').click();
     assert.match(await host.locator('#context-summary').textContent(),/44%/);
     await page.screenshot({path:join(output,`${mode}-inline.png`)});
+    await quotaChip.hover();await host.locator('#quota-card').waitFor({state:'visible'});
     assert.match(await host.locator('#active-group-name').textContent(),/Gemini/);
     assert.equal(await host.locator('#quota-siblings [data-group="3p"]').isVisible(),true);
     await host.locator('#quota-siblings [data-group="3p"]').click();
     await page.waitForTimeout(180);
-    assert.equal(await host.locator('#context-card').isVisible(),true,`${mode}: composer focus stole the quota card`);
+    assert.equal(await host.locator('#quota-card').isVisible(),true,`${mode}: composer focus stole the quota card`);
     assert.equal(await page.evaluate(()=>window.testComposerClicks),0,'Widget clicks must not activate composer focus handlers');
     assert.match(await host.locator('#active-group-name').textContent(),/Claude/);
     assert.match(await host.locator('#five-balance').textContent(),/41\.7%/);
     assert.equal(await host.locator('#quota-siblings [data-group="gemini"]').isVisible(),true);
     await host.locator('#quota-siblings [data-group="gemini"]').focus();await page.keyboard.press('Enter');
     await page.waitForTimeout(180);
-    assert.equal(await host.locator('#context-card').isVisible(),true);
+    assert.equal(await host.locator('#quota-card').isVisible(),true);
     assert.equal(await host.locator('#quota-siblings .quota-sibling').first().evaluate(e=>e.getRootNode().activeElement?.classList.contains('quota-sibling')),true);
     assert.match(await host.locator('#active-group-name').textContent(),/Gemini/);
     assert.match(await host.locator('#five-balance').textContent(),/83\.4%/);
     await page.locator('[aria-label="Message input"]').click();
-    assert.equal(await host.locator('#context-card').isVisible(),false);
+    assert.equal(await host.locator('#quota-card').isVisible(),false);
     assert.equal(await page.locator('[aria-label="Message input"]').evaluate(e=>document.activeElement===e),true);
     await page.evaluate(()=>window.testComposerClicks=0);
     await contextChip.hover();
@@ -360,8 +362,8 @@ try {
   report.hostOverlayOcclusion=true;
   report.quotaMenuInteraction=true;
   report.inline=report.liveSwitch=report.hostOverridesOS=true;
-  await checkHoverQuotaRefresh(page,host,contextChip);
-  assert.equal(await host.locator('#context-card').isVisible(),true,'Refreshing must not close the hover card');
+  await checkHoverQuotaRefresh(page,host,quotaChip);
+  assert.equal(await host.locator('#quota-card').isVisible(),true,'Refreshing must not close the hover card');
   await checkAccent(page,host,true);
   await checkSurfaces(page,host,true);
   // No explicit theme: read an opaque modern CSS color from the composer.

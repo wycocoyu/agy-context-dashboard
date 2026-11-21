@@ -40,6 +40,13 @@ module.exports = function installAgPulseInlineWidget() {
     initial:localGet('ag-pulse-quota-display'),cache:value=>localSet('ag-pulse-quota-display',value),
     write:input=>window.agPulseHost.setPreferences(input),changed:()=>{for(const inst of instances)inst.onQuotaDisplayChanged();},
   });
+  let compositionView=localGet('ag-pulse-composition-view')==='bar'?'bar':'list';
+  const setCompositionView=next=>{
+    const normalized=next==='bar'?'bar':'list';
+    if(compositionView===normalized)return;
+    compositionView=normalized;localSet('ag-pulse-composition-view',normalized);
+    for(const inst of instances)inst.onCompositionViewChanged();
+  };
   function syncGuide(value){speedStyle.sync(value);usageScope.sync(value);quotaDisplay.sync(value);if(value?.languageGuideDismissed===true)guideDismissed=true;if(value?.usageGuideDismissed===true){usageGuideDismissed=true;for(const inst of instances)inst.syncUsageGuide();}}
   const preferences=language.connectPreferences({
     read:async()=>{const value=await window.agPulseHost.getPreferences();syncGuide(value);return value;},
@@ -265,7 +272,8 @@ module.exports = function installAgPulseInlineWidget() {
   const date=language.resetDate;
   const label=language.quotaGroupLabel;
   const attribute=(element,name,value)=>{if(value===null){if(element.hasAttribute(name))element.removeAttribute(name);}else if(element.getAttribute(name)!==String(value))element.setAttribute(name,String(value));};
-  const style=(element,name,value)=>{if(element.style.getPropertyValue(name)!==value)element.style.setProperty(name,value);};
+  const styleCache=new WeakMap();
+  const style=(element,name,value)=>{if(!element)return;let map=styleCache.get(element);if(!map){map=new Map();styleCache.set(element,map);}if(map.get(name)===value)return;map.set(name,value);if(element.style.getPropertyValue(name)!==value)element.style.setProperty(name,value);};
   const hidden=(element,value)=>{if(element.hidden!==value)element.hidden=value;};
   const GUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const visibleHostElement=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0&&getComputedStyle(element).visibility!=='hidden';
@@ -501,6 +509,7 @@ module.exports = function installAgPulseInlineWidget() {
     text('language-save-note',preferences.error?t('languageSaveFailed'):'');
     for(const button of root.querySelectorAll('[data-speed-style-choice]')){const value=button.dataset.speedStyleChoice,name=t(value==='cat'?'styleCat':'styleMinimal'),failed=speedStyle.error&&speedStyle.style===value;attribute(button,'aria-label',name);attribute(button,'title',failed?`${name} · ${t('styleSaveFailed')}`:name);attribute(button,'aria-pressed',speedStyle.style===value);attribute(button,'data-save-failed',failed);}
     for(const button of root.querySelectorAll('[data-quota-display-choice]')){const value=button.dataset.quotaDisplayChoice,name=t(value==='both'?'quotaDisplayBoth':value==='auto'?'quotaDisplayAuto':'quotaDisplayCompact'),failed=quotaDisplay.error&&quotaDisplay.value===value;attribute(button,'aria-label',name);attribute(button,'title',failed?`${name} · ${t('quotaDisplaySaveFailed')}`:name);attribute(button,'aria-pressed',quotaDisplay.value===value);attribute(button,'data-save-failed',failed);}
+    for(const button of root.querySelectorAll('[data-composition-view]')){attribute(button,'aria-pressed',button.dataset.compositionView===compositionView);}
     const zh=language.language==='zh-CN',tw=language.language==='zh-TW';
     text('usage-today-label',tw?'今日用量':(zh?'今日用量':'Today'));text('usage-month-label',tw?'本月用量':(zh?'本月用量':'This month'));
     text('usage-open-label',tw?'檢視用量統計':(zh?'查看用量统计':'View token usage'));updateMenu?.localize();
@@ -786,9 +795,9 @@ module.exports = function installAgPulseInlineWidget() {
     else {if(element.hasAttribute('popover')&&element.matches(':popover-open'))element.hidePopover();hidden(element,true);}
   }
   let cardSide=null;
-  // The quota ring chip shares the context card, which holds both quota
-  // windows and the quotaDisplay preference control.
-  const cardIdFor=name=>name==='quota'?'context-card':`${name}-card`;
+  let ignoreLeaveUntil=0;
+  // Each strip chip maps 1:1 to its own detail popover card.
+  const cardIdFor=name=>`${name}-card`;
   function hide({keepWarm=false}={}){
     clearTimeout(openTimer);openTimer=null;
     clearTimeout(hoverTimer);hoverTimer=null;
@@ -811,11 +820,13 @@ module.exports = function installAgPulseInlineWidget() {
     finally{changingCards=false;}
     updateGuide();
     position();
-    if(name==='context'||name==='quota')void hoverQuotaRefresh();
+    if(name==='quota')void hoverQuotaRefresh();
+    if(name==='context')contextDetailRefresh();
   }
   function hoverChip(name){
     clearTimeout(hoverTimer);
-    if(name==='context'||name==='quota')void hoverQuotaRefresh();
+    if(name==='quota')void hoverQuotaRefresh();
+    if(name==='context')contextDetailRefresh();
     if(isWarm()){
       clearTimeout(openTimer);openTimer=null;
       show(name);
@@ -835,6 +846,7 @@ module.exports = function installAgPulseInlineWidget() {
     clearTimeout(openTimer);openTimer=null;
   }
   function scheduleHide(){
+    if(Date.now()<ignoreLeaveUntil)return;
     clearTimeout(openTimer);openTimer=null;
     clearTimeout(hoverTimer);
     // Measure the warm window from pointer departure, not the later hide.
@@ -1015,11 +1027,20 @@ module.exports = function installAgPulseInlineWidget() {
       #usage-entry{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:9px;margin-top:10px;border-top:1px solid var(--pulse-separator)}#usage-entry[hidden]{display:none}
       .usage-summary{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1 1 auto}.usage-summary>div{min-width:0}.usage-label{font-size:11px;line-height:1.25;color:var(--pulse-muted);white-space:nowrap}.usage-val{display:flex;align-items:baseline;gap:2px;white-space:nowrap;line-height:1.3}.usage-summary strong{font-size:13px;font-weight:600;color:var(--pulse-foreground);font-variant-numeric:tabular-nums}.usage-unit{font-size:11px;color:var(--pulse-muted)}
       #open-usage{display:inline-flex;align-items:center;gap:4px;flex:none;padding:4px 6px;border:0;border-radius:5px;background:transparent;color:var(--pulse-accent);font:inherit;font-size:11px;font-weight:550;white-space:nowrap;transition:background-color 120ms ease,transform 120ms ease}#open-usage:hover{background:var(--pulse-hover)}#open-usage:active{transform:scale(.98)}#open-usage svg{width:12px;height:12px;flex:none}
-      .heading.context-hero{padding-bottom:6px;margin-bottom:6px;border-bottom:0}.context-hero-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.context-hero-meta{display:inline-flex;align-items:baseline;gap:6px;min-width:0}.context-compaction-pill{padding:1px 5px;border-radius:4px;background:var(--pulse-control);font-size:10px;color:var(--pulse-label);font-variant-numeric:tabular-nums}.context-compaction-pill[hidden]{display:none}#context-summary{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}#context-tokens{font-size:11px;color:var(--pulse-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-      .quota-bar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--pulse-separator)}.quota-actions{display:flex;align-items:center;gap:6px}
+      .heading.context-hero{padding-bottom:6px;margin-bottom:6px;border-bottom:0}.context-hero-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.context-hero-meta{display:inline-flex;align-items:baseline;gap:6px;min-width:0}.context-compaction-pill{padding:1px 6px;border-radius:4px;background:var(--pulse-control);font-size:10px;color:var(--pulse-label);font-variant-numeric:tabular-nums;white-space:nowrap}.context-compaction-pill[hidden]{display:none}#context-summary{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}#context-tokens{font-size:11px;color:var(--pulse-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+      .context-composition{margin-top:8px}.context-composition[hidden]{display:none}.composition-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:11px;font-weight:500;color:var(--pulse-label)}.composition-title-wrap{display:inline-flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}.composition-title-wrap .tag{font-weight:400;font-size:10px;color:var(--pulse-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+      .composition-toggle{display:inline-flex;gap:2px;padding:2px;border-radius:6px;background:var(--pulse-control);flex:none}.composition-toggle-btn{border:0;background:none;font:inherit;font-size:10px;padding:2px 6px;margin:0;border-radius:4px;color:var(--pulse-muted);line-height:14px;cursor:pointer;transition:background-color 140ms ease,color 140ms ease}.composition-toggle-btn:hover{color:var(--pulse-hover-text);background:var(--pulse-hover)}.composition-toggle-btn[aria-pressed=true]{color:var(--pulse-foreground);background:var(--pulse-hover);box-shadow:0 1px 2px var(--pulse-shadow)}
+      .composition-meter{display:flex;gap:1px;height:6px;border-radius:999px;overflow:hidden;margin-top:6px;background:var(--pulse-track)}.composition-meter i{display:block;height:100%;min-width:0}
+      .composition-seg-customization,.composition-seg-group-rules{background:var(--pulse-emphasis)}.composition-seg-group-skills{background:color-mix(in srgb,var(--pulse-emphasis) 65%,var(--pulse-accent))}.composition-seg-group-subagents{background:color-mix(in srgb,var(--pulse-ring) 80%,var(--pulse-emphasis))}.composition-seg-group-mcp{background:color-mix(in srgb,var(--pulse-accent) 60%,var(--pulse-success))}.composition-seg-user{background:var(--pulse-accent)}.composition-seg-thinking{background:var(--pulse-warning)}.composition-seg-reply{background:var(--pulse-success)}.composition-seg-assistant{background:var(--pulse-ring)}.composition-seg-tool{background:var(--pulse-muted)}.composition-seg-system{background:color-mix(in srgb,var(--pulse-muted) 45%,transparent)}.composition-seg-other{background:color-mix(in srgb,var(--pulse-accent) 28%,var(--pulse-track))}.composition-seg-remaining{background:var(--pulse-track)}
+      .composition-list{display:flex;flex-direction:column;gap:5px;margin-top:8px}.composition-list[hidden]{display:none}.composition-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;line-height:1.35}.composition-row-label{display:inline-flex;align-items:center;gap:7px;color:var(--pulse-label);min-width:0}.composition-row-dot{width:7px;height:7px;border-radius:50%;flex:none}.composition-row-pct{font-variant-numeric:tabular-nums;color:var(--pulse-foreground);font-weight:500;white-space:nowrap}
+      .composition-legend{display:flex;flex-wrap:wrap;gap:3px 8px;margin-top:6px;font-size:10px;line-height:1.3;color:var(--pulse-muted);font-variant-numeric:tabular-nums}.composition-legend[hidden]{display:none}.composition-legend-item{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.composition-legend-dot{width:6px;height:6px;border-radius:2px;flex:none}
+      .context-cache-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--pulse-separator);font-size:11px;color:var(--pulse-muted)}.context-cache-row[hidden]{display:none}.context-cache-row strong{font-size:11px;font-weight:600;color:var(--pulse-foreground);font-variant-numeric:tabular-nums}
+      .context-trend-section{margin-top:8px;padding-top:8px;border-top:1px solid var(--pulse-separator)}.context-trend-section[hidden]{display:none}.context-trend-section .composition-head{margin-top:0}
+      #context-trend-svg{display:block;width:100%;height:36px;margin-top:6px}.trend-line{fill:none;stroke:var(--pulse-accent);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}.trend-marker{stroke:var(--pulse-warning);stroke-width:1;stroke-dasharray:2 2}.trend-marker-hit{stroke:transparent;stroke-width:6}
+      .heading.quota-hero{margin-bottom:0}.quota-actions{display:flex;align-items:center;gap:6px}
       .quota-details{margin-top:7px}.quota-section+.quota-section{margin-top:8px;padding-top:8px;border-top:1px solid var(--pulse-separator)}.quota-section[hidden]+.quota-section{margin-top:0;padding-top:0;border-top:0}
       .quota-row-top{display:flex;align-items:baseline;gap:6px;font-size:11px}.quota-name{display:inline-flex;align-items:center;gap:5px;color:var(--pulse-label);margin-right:auto;min-width:0}.quota-meta{display:inline-flex;align-items:baseline;gap:4px;font-size:11px;color:var(--pulse-muted);font-variant-numeric:tabular-nums;white-space:nowrap}.quota-row-top strong{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;flex:none}.quota-track{margin:6px 0 0}.quota-section .footnote{margin-top:5px}.quota-error{color:var(--pulse-warning);margin-top:7px}
-      .card-language{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--pulse-separator);font-size:11px;color:var(--pulse-muted)}
+      .card-language,.quota-display-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--pulse-separator);font-size:11px;color:var(--pulse-muted)}
       .card-footer-actions{display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:none}
       .footer-repo-link{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:5px;color:var(--pulse-muted);text-decoration:none;cursor:pointer;flex:none;transition:background-color 120ms ease,color 120ms ease,transform 120ms ease}
       .footer-repo-link:hover{background:var(--pulse-hover);color:var(--pulse-foreground)}.footer-repo-link:active{transform:scale(.97)}.footer-repo-link:focus-visible{outline:2px solid var(--pulse-accent);outline-offset:2px}
@@ -1060,7 +1081,7 @@ module.exports = function installAgPulseInlineWidget() {
       <span class="dot" id="dot" title="Connecting"></span>
       <button class="chip" data-card="speed" data-i18n-aria="session" aria-controls="speed-card" aria-expanded="false"><svg class="cat-badge" id="strip-cat-badge" viewBox="0 0 16 10" aria-hidden="true"></svg><span class="rounds dim" id="rounds"></span><strong id="tps">—</strong><span>tok/s</span></button>
       <button class="chip" data-card="cache" data-i18n-aria="cacheTitle" aria-controls="cache-card" aria-expanded="false">${svg('cache')}<svg class="collection-warning" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 15 14H1ZM8 6v4m0 2v.1"/></svg><svg class="collection-processing" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5M8 1v3m3-2v3"/></svg><span class="collection-label"></span><span class="cache-total" id="cache-total">— tok</span></button>
-      <button class="chip" data-card="quota" data-i18n-aria="quotaRingTitle" aria-controls="context-card" aria-expanded="false"><svg class="quota-ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="ring-track" cx="10" cy="10" r="8"/><circle class="ring-arc" id="quota-ring-arc" cx="10" cy="10" r="8" transform="rotate(-90 10 10)"/></svg><span class="quota-text" id="quota-text">—</span></button>
+      <button class="chip" data-card="quota" data-i18n-aria="quotaRingTitle" aria-controls="quota-card" aria-expanded="false"><svg class="quota-ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="ring-track" cx="10" cy="10" r="8"/><circle class="ring-arc" id="quota-ring-arc" cx="10" cy="10" r="8" transform="rotate(-90 10 10)"/></svg><span class="quota-text" id="quota-text">—</span></button>
       <button class="chip" data-card="context" data-i18n-aria="context" aria-controls="context-card" aria-expanded="false"><span class="context-ring" id="context-ring" aria-hidden="true"></span><span class="context-label" data-i18n="contextShort">Ctx</span><strong id="context-percent">—</strong></button>
     </div><section class="card" id="speed-card" role="region" data-i18n-aria="session" aria-label="Session statistics" hidden>
       <div class="heading speed-hero"><div class="speed-hero-main"><div class="speed-hero-label"><svg class="cat-badge" id="card-cat-badge" viewBox="0 0 16 10" aria-hidden="true"></svg><span data-i18n="latestSpeed">${t('latestSpeed')}</span></div><div class="speed-hero-rate"><strong id="latest-rate">—</strong><span class="speed-unit" id="latest-unit">tok/s</span></div></div><svg class="dashboard-speed-trail" id="speed-trail" viewBox="0 0 140 54" aria-hidden="true"></svg><div class="style-toggle" role="group" data-i18n-aria="speedStyle"><button type="button" class="style-toggle-button" id="speed-style-minimal" data-speed-style-choice="minimal"><svg viewBox="0 0 16 10" aria-hidden="true"><path class="speed-pulse-icon" d="M1 5h3l2-4 3 8 2-4h4"/></svg></button><button type="button" class="style-toggle-button" id="speed-style-cat" data-speed-style-choice="cat"><svg class="cat-badge" id="style-cat-icon" viewBox="0 0 16 10" aria-hidden="true"></svg></button></div></div>
@@ -1070,28 +1091,33 @@ module.exports = function installAgPulseInlineWidget() {
     </section><section class="card" id="cache-card" role="region" data-i18n-aria="cacheTitle" aria-label="Token cache" hidden>
       <div class="heading cache-hero"><div class="cache-hero-main"><div class="hero-label">${svg('cache')}<span data-i18n="cacheTitle">Token cache</span></div><div class="cache-hero-value"><span class="cache-hero-total" id="cache-hero-total"><strong id="cache-coverage">—</strong><span class="speed-unit" id="cache-coverage-unit">toks</span></span><span class="rate-pill" id="cache-detail-rate">—</span></div></div><div class="cache-meter" aria-hidden="true"><i id="cache-seg-read"></i><i id="cache-seg-miss"></i><i id="cache-seg-out"></i></div></div>
       <dl class="stats-grid cache-stats">${[['cacheRead','cache-read'],['cacheMiss','cache-miss'],['cacheOutput','cache-output']].map(([key,id])=>`<div id="${id}-cell"><dt data-i18n="${key}">${t(key)}</dt><dd><strong id="${id}">—</strong><span class="speed-unit" id="${id}-unit" hidden> toks</span></dd></div>`).join('')}<div id="cache-write-row" class="span-row" hidden><dt data-i18n="cacheWrite">${t('cacheWrite')}</dt><dd id="cache-write">—</dd></div><div class="span-row" id="task-own-row" hidden><dt data-i18n="taskOwn">${t('taskOwn')}</dt><dd id="task-own">—</dd></div><div class="span-row" id="task-subagents-row" hidden><dt id="task-subagents-label"></dt><dd id="task-subagents">—</dd></div></dl><p class="footnote" id="cache-note" hidden></p>
+    </section><section class="card quota-card" id="quota-card" role="region" data-i18n-aria="quotaRingTitle" hidden>
+      <div class="heading quota-hero"><div class="quota-spotlight-head" id="active-quota-group"><i class="spot-dot" id="spot-dot" aria-hidden="true"></i><strong class="spot-name" id="active-group-name">—</strong></div><div class="quota-actions"><span class="refresh quota-spinner" id="quota-spinner" role="status" data-i18n-aria="refreshing" aria-label="Refreshing…" aria-busy="false" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.8 6a5.1 5.1 0 1 0 .1 4M12.8 2.5V6H9.2"/></svg></span><span class="pace-badge" id="quota-pace" hidden><i class="pace-dot" aria-hidden="true"></i><span id="quota-pace-text"></span></span></div></div>
+      <div class="quota-details">${['five','week'].map(name=>`<section class="quota-section" id="${name}-quota-section" data-i18n-aria="${name}" aria-label="${t(name)}"><div class="quota-row-top"><span class="quota-name">${svg(name)}<span id="${name}-quota-title" data-i18n="${name}">${t(name)}</span></span><span class="quota-meta"><span class="reset" id="${name}-countdown">—</span></span><strong id="${name}-balance">—</strong></div><div class="track quota-track" role="progressbar" data-i18n-aria="${name}" id="${name}-track"><i class="track-actual" id="${name}-fill"></i></div><div class="quota-forecast" id="${name}-forecast" hidden><span class="forecast-main" id="${name}-forecast-text"></span></div><div class="quota-usage" id="${name}-usage" hidden><span data-i18n="quotaWindowUsage">${t('quotaWindowUsage')}</span><span class="quota-usage-val" id="${name}-usage-value">—</span></div><p class="footnote" id="${name}-note" hidden></p></section>`).join('')}</div>
+      <p class="footnote quota-error" id="quota-error" hidden></p>
+      <div class="quota-siblings" id="quota-siblings" hidden></div>
     </section><section class="card context-card" id="context-card" role="region" data-i18n-aria="context" hidden>
       <div class="heading context-hero"><span class="hero-label">${svg('context')}<span data-i18n="context">Context window</span></span><span class="tag" id="context-model">—</span></div>
       <div class="context-hero-row"><strong id="context-summary">—</strong><span class="context-hero-meta"><span class="tag context-compaction-pill" id="context-compaction-pill" hidden></span><span id="context-tokens">—</span></span></div>
       <div class="track" role="progressbar" data-i18n-aria="context" id="context-track"><i id="context-fill"></i></div>
-      <div class="quota-bar-head"><div class="quota-spotlight-head" id="active-quota-group"><i class="spot-dot" id="spot-dot" aria-hidden="true"></i><strong class="spot-name" id="active-group-name">—</strong></div><div class="quota-actions"><span class="refresh quota-spinner" id="quota-spinner" role="status" data-i18n-aria="refreshing" aria-label="Refreshing…" aria-busy="false" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.8 6a5.1 5.1 0 1 0 .1 4M12.8 2.5V6H9.2"/></svg></span><span class="pace-badge" id="quota-pace" hidden><i class="pace-dot" aria-hidden="true"></i><span id="quota-pace-text"></span></span></div></div>
-      <div class="quota-details">${['five','week'].map(name=>`<section class="quota-section" id="${name}-quota-section" data-i18n-aria="${name}" aria-label="${t(name)}"><div class="quota-row-top"><span class="quota-name">${svg(name)}<span id="${name}-quota-title" data-i18n="${name}">${t(name)}</span></span><span class="quota-meta"><span class="reset" id="${name}-countdown">—</span></span><strong id="${name}-balance">—</strong></div><div class="track quota-track" role="progressbar" data-i18n-aria="${name}" id="${name}-track"><i class="track-actual" id="${name}-fill"></i></div><div class="quota-forecast" id="${name}-forecast" hidden><span class="forecast-main" id="${name}-forecast-text"></span></div><div class="quota-usage" id="${name}-usage" hidden><span data-i18n="quotaWindowUsage">${t('quotaWindowUsage')}</span><span class="quota-usage-val" id="${name}-usage-value">—</span></div><p class="footnote" id="${name}-note" hidden></p></section>`).join('')}</div>
-      <p class="footnote quota-error" id="quota-error" hidden></p>
-      <div class="quota-siblings" id="quota-siblings" hidden></div>
+      <section class="context-composition" id="context-composition" hidden><div class="composition-meter" id="composition-meter" aria-hidden="true"></div><div class="composition-head"><span class="composition-title-wrap"><span data-i18n="compositionTitle">Context composition</span><span class="tag" id="composition-source"></span></span><div class="composition-toggle" role="group" data-i18n-aria="compositionViewToggle"><button type="button" class="composition-toggle-btn" data-composition-view="list" data-i18n="compositionViewList">List</button><button type="button" class="composition-toggle-btn" data-composition-view="bar" data-i18n="compositionViewBar">Bar</button></div></div><div class="composition-list" id="composition-list"></div><div class="composition-legend" id="composition-legend" hidden></div></section>
+      <div class="context-cache-row" id="context-cache-row" hidden><span data-i18n="avgCacheHitRate">Avg cache hit rate</span><strong id="context-cache-rate">—</strong></div>
+      <section class="context-trend-section" id="context-trend-section" hidden><div class="composition-head"><span data-i18n="trendTitle">Context trend</span><span class="tag" id="trend-sample"></span></div><svg id="context-trend-svg" viewBox="0 0 280 36" preserveAspectRatio="none" aria-hidden="true"></svg></section>
     </section>`);
     row.insertBefore(node,branch.nextSibling);
     attribute(node,'data-speed-style',speedStyle.style);paintSpeed([],'idle',0.36,false);updateCatBadge($('style-cat-icon'),'idle');
-    for(const card of root.querySelectorAll('.card')){const note=document.createElement('div');note.className='scope-note';note.dataset.i18n='subagentStats';card.querySelector('.heading').after(note);}
-    for(const card of root.querySelectorAll('.card')){
+    for(const cardId of ['speed-card','cache-card','context-card']){const card=$(cardId);if(!card)continue;const note=document.createElement('div');note.className='scope-note';note.dataset.i18n='subagentStats';card.querySelector('.heading').after(note);}
+    for(const cardId of ['speed-card','cache-card','context-card']){
+      const card=$(cardId);if(!card)continue;
       const notice=document.createElement('section');notice.className='collection-notice';notice.hidden=true;
       setMarkup(notice,'<strong class="collection-state"></strong><div data-i18n="collectionReason"></div><details><summary data-i18n="collectionDetails"></summary><div class="collection-budget-kind"></div><div class="collection-budget-size"></div><div data-i18n="collectionNoPartial"></div></details>');
       const docs=document.createElement('a');docs.href='https://github.com/wycocoyu/agy-context-dashboard/blob/main/docs/LONG_CONVERSATIONS.md';docs.target='_blank';docs.rel='noopener noreferrer';docs.dataset.i18n='collectionDocs';notice.querySelector('details').append(docs);
       card.querySelector('.heading').after(notice);
       notice.querySelector('details').addEventListener('toggle',()=>{if(!disposed)position();});
     }
-    const displayRow=document.createElement('div');displayRow.className='card-language';
+    const displayRow=document.createElement('div');displayRow.className='quota-display-row';
     setMarkup(displayRow,'<span data-i18n="quotaDisplay"></span><div class="language-options" role="group" data-i18n-aria="quotaDisplay">'+[['both','quotaDisplayBoth'],['auto','quotaDisplayAuto'],['compact','quotaDisplayCompact']].map(([value,key])=>`<button type="button" class="language-button" data-quota-display-choice="${value}" data-i18n="${key}"></button>`).join('')+'</div>');
-    $('context-card').append(displayRow);
+    $('quota-card').append(displayRow);
     const languageRow=document.createElement('div');languageRow.className='card-language';
     setMarkup(languageRow,'<div class="language-options" role="group" data-i18n-aria="language"><button type="button" class="language-button" id="card-language-en" data-language-choice="en" aria-label="English">EN</button><button type="button" class="language-button" id="card-language-zh" data-language-choice="zh-CN" aria-label="简体中文">简</button><button type="button" class="language-button" id="card-language-zh-tw" data-language-choice="zh-TW" aria-label="繁體中文">繁</button></div><div class="card-footer-actions"></div>');
     const footerActions=languageRow.querySelector('.card-footer-actions');
@@ -1123,11 +1149,12 @@ module.exports = function installAgPulseInlineWidget() {
     // default focus/click behavior and document-level outside-click dismissal.
     for(const type of ['pointerdown','mousedown','click'])root.addEventListener(type,event=>event.stopPropagation());
     node.addEventListener('pointerenter',()=>clearTimeout(hoverTimer));node.addEventListener('pointerleave',scheduleHide);
-    root.addEventListener('focusout',()=>setTimeout(()=>{if(!cardEngaged())hide();},0));
+    root.addEventListener('focusout',()=>setTimeout(()=>{if(Date.now()>=ignoreLeaveUntil&&!cardEngaged())hide();},0));
     for(const button of root.querySelectorAll('.refresh'))button.addEventListener('click',()=>refreshManually(false));
     for(const button of root.querySelectorAll('[data-language-choice]'))button.addEventListener('click',()=>void preferences.choose(button.dataset.languageChoice));
     for(const button of root.querySelectorAll('[data-speed-style-choice]'))button.addEventListener('click',()=>void speedStyle.choose(button.dataset.speedStyleChoice));
     for(const button of root.querySelectorAll('[data-quota-display-choice]'))button.addEventListener('click',()=>void quotaDisplay.choose(button.dataset.quotaDisplayChoice));
+    for(const button of root.querySelectorAll('[data-composition-view]'))button.addEventListener('click',()=>setCompositionView(button.dataset.compositionView));
     if(window.__agPulseUsageFactory){
       const section=document.createElement('div');section.id='usage-entry';section.hidden=true;
       setMarkup(section,'<div class="usage-summary"><div><div class="usage-label" id="usage-today-label"></div><div class="usage-val"><strong id="usage-today"></strong><span class="usage-unit" id="usage-today-unit">toks</span></div></div><div><div class="usage-label" id="usage-month-label"></div><div class="usage-val"><strong id="usage-month"></strong><span class="usage-unit" id="usage-month-unit">toks</span></div></div></div><button type="button" id="open-usage"><span id="usage-open-label"></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button>');$('cache-card').append(section);
@@ -1223,7 +1250,7 @@ module.exports = function installAgPulseInlineWidget() {
     if(compactionPill){
       if(compactions!==null&&compactions>0){
         hidden(compactionPill,false);
-        text('context-compaction-pill',`🗜 ${t('contextCompactionCount',{n:compactions})}`);
+        text('context-compaction-pill',t('contextCompactionCount',{n:compactions}));
         attribute(compactionPill,'title',t('contextCompactionsTitle',{n:compactions}));
       }else{
         hidden(compactionPill,true);
@@ -1236,7 +1263,7 @@ module.exports = function installAgPulseInlineWidget() {
     updateMenu?.syncHint?.({available:hasUpdate,latestVersion:updateVer});
     const ctxChip=root.querySelector('[data-card="context"]');
     if(ctxChip){
-      const compSuffix=compactions!==null&&compactions>0?` · 🗜 ${t('contextCompactionCount',{n:compactions})}`:'';
+      const compSuffix=compactions!==null&&compactions>0?` · ${t('contextCompactionSummary',{n:compactions})}`:'';
       const updateSuffix=hasUpdate&&updateVer?` · v${updateVer}`:'';
       const baseTip=hasCapacity?`Ctx ${Math.round(context.usedFraction*100)}% (${compact(context.usedTokens)} / ${compact(context.maxTokens)})${compSuffix}`:(compSuffix?`Ctx${compSuffix}`:'');
       attribute(ctxChip,'data-update-available',hasUpdate?'true':null);
@@ -1245,6 +1272,8 @@ module.exports = function installAgPulseInlineWidget() {
     style($('context-fill'),'width',hasCapacity?`${Math.min(1,context.usedFraction)*100}%`:'0%');
     style($('context-fill'),'background',hasCapacity&&context.usedFraction>=.9?'var(--pulse-danger)':hasCapacity&&context.usedFraction>=.75?'var(--pulse-warning)':'');
     attribute($('context-track'),'aria-valuenow',hasCapacity?Math.min(100,context.usedFraction*100):null);attribute($('context-track'),'aria-valuemin','0');attribute($('context-track'),'aria-valuemax','100');
+    const usage=taskUsage||speed,cache=usage?.cache;
+    renderComposition(speed?.contextComposition,cache);
     const isFiniteRate=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
     const stripRate=!speed||speed.latestRateStatus==='legacy'?null:speed.latestRateStatus!=='unreliable'&&isFiniteRate(speed.latestTps)?speed.latestTps:isFiniteRate(speed.tps)?speed.tps:null;
     const isRunning=Boolean(speed&&/RUNNING/i.test(String(speed.status||'')));
@@ -1272,7 +1301,6 @@ module.exports = function installAgPulseInlineWidget() {
     attribute($('speed-meta'),'title',speed?`${t('modelTime')}: ${seconds(speed.modelSeconds)} · ${t('toolTime')}: ${seconds(speed.toolSeconds)}`:null);
     const respOut=speed?.counts?.responseOutput,thinkOut=speed?.counts?.thinkingOutput;
     text('tokens',speed?`${count(respOut)} / ${count(thinkOut)} ${tokUnit((respOut||0)+(thinkOut||0))}`:'—');
-    const usage=taskUsage||speed,cache=usage?.cache;
     text('cache-detail-rate',pct(cache?.hitRate));
     const tokens=usage?.tokens || cache;
     // Keep coverage in the data model; the compact card shows readable counters.
@@ -1445,7 +1473,7 @@ module.exports = function installAgPulseInlineWidget() {
     // em-dash on a dashed ring, never 0%.
     const quotaChip=root.querySelector('[data-card="quota"]'),quotaArcEl=$('quota-ring-arc'),quotaTextEl=$('quota-text');
     if(quotaChip&&quotaArcEl){
-      hidden(quotaChip,!group);
+      hidden(quotaChip,!group&&!quotaError);
       if(group){
         const view=language.quotaRingView(group,quotaDisplay.value),RING=2*Math.PI*8;
         const ringPct=v=>`${Math.round(v*100)}%`;
@@ -1464,11 +1492,19 @@ module.exports = function installAgPulseInlineWidget() {
           const v=view.show==='5h'?view.five?.remaining??null:view.week?.remaining??null;
           html=`<span class="dim">${tag(view.show)}</span> `+(v!==null?`<strong>${ringPct(v)}</strong>`:'<span class="dim">—</span>');
         }else html='<span class="dim">—</span>';
-        setMarkup(quotaTextEl,html);
+        if(quotaTextEl._markup!==html){quotaTextEl._markup=html;setMarkup(quotaTextEl,html);}
         const tips=[];
         if(view.five)tips.push(`5h ${t('remaining')} ${view.five.remaining!==null?ringPct(view.five.remaining):'—'}`);
         if(view.week)tips.push(`${t('weekShort')} ${t('remaining')} ${view.week.remaining!==null?ringPct(view.week.remaining):'—'}`);
         const tip=`${t('quotaRingTitle')} · ${tips.length?tips.join(' · '):t('quotaRingUnknown')}`;
+        attribute(quotaChip,'title',tip);attribute(quotaChip,'aria-label',tip);
+      }else if(quotaError){
+        attribute(quotaArcEl,'stroke-dasharray','2 3');
+        attribute(quotaChip,'data-quota-level','unknown');
+        attribute(quotaChip,'data-quota-dot',null);
+        const unknownHtml='<span class="dim">—</span>';
+        if(quotaTextEl._markup!==unknownHtml){quotaTextEl._markup=unknownHtml;setMarkup(quotaTextEl,unknownHtml);}
+        const tip=`${t('quotaRingTitle')} · ${quotaError}`;
         attribute(quotaChip,'title',tip);attribute(quotaChip,'aria-label',tip);
       }
     }
@@ -1495,6 +1531,135 @@ module.exports = function installAgPulseInlineWidget() {
       finally{if(hoverQuotaRequest===request){hoverQuotaRequest=null;if(!manualRequest)setQuotaBusy(false);}}
     })();
     return request.promise;
+  }
+  const COMPOSITION_LABELS={customization:'compositionCustomization',user:'compositionUser',thinking:'compositionThinking',reply:'compositionReply',assistant:'compositionAssistant',tool:'compositionTool',system:'compositionSystem',other:'compositionOther',remaining:'compositionRemaining'};
+  const COMPOSITION_SOURCES={hybrid:'compositionSourceHybrid',transcript:'compositionSourceTranscript',steps:'compositionSourceSteps'};
+  const COMPOSITION_GROUPS={Rules:['compositionGroupRules','group-rules'],Skills:['compositionGroupSkills','group-skills'],Subagents:['compositionGroupSubagents','group-subagents'],'Mcp Tools':['compositionGroupMcpTools','group-mcp']};
+  // The panel side computes every number (issue #34); the widget only maps
+  // segment ids to labels, colors and titles. The composition bar matches the
+  // host usage percent because dynamic estimates are scaled panel-side.
+  function renderComposition(composition,cache=null){
+    const section=$('context-composition'),trendSection=$('context-trend-section'),track=$('context-track'),cacheRow=$('context-cache-row');
+    const usable=Boolean(composition&&Number.isSafeInteger(composition.usedTokens)&&Number.isSafeInteger(composition.maxTokens)&&composition.maxTokens>0&&Array.isArray(composition.segments)&&composition.segments.some(segment=>segment.id!=='remaining'));
+    if(track)hidden(track,usable);
+    if(section)hidden(section,!usable);
+    const hasHitRate=typeof cache?.hitRate==='number'&&Number.isFinite(cache.hitRate);
+    if(cacheRow){hidden(cacheRow,!hasHitRate);if(hasHitRate)text('context-cache-rate',pct(cache.hitRate));}
+    const trend=composition?.trend,trendOk=Boolean(trend&&Array.isArray(trend.points)&&trend.points.length>=2);
+    if(trendSection)hidden(trendSection,!trendOk);
+    if(usable&&section){
+      const injection=composition.customization?.available?t('compositionCustomizationValue',{tokens:compact(composition.customization.tokens)}):t('compositionCustomizationValue',{tokens:'—'});
+      const sourceKey=COMPOSITION_SOURCES[composition.source];
+      const sourceTag=sourceKey?t(sourceKey):'';
+      text('composition-source',[injection,sourceTag].filter(Boolean).join(' · '));
+      attribute(section,'title',t('compositionBasis',{source:sourceTag||'—'}));
+      for(const button of root.querySelectorAll('[data-composition-view]'))attribute(button,'aria-pressed',button.dataset.compositionView===compositionView);
+      const meter=$('composition-meter'),listEl=$('composition-list'),legend=$('composition-legend');
+      if(listEl)hidden(listEl,compositionView!=='list');
+      if(legend)hidden(legend,compositionView!=='bar');
+      const sig=JSON.stringify([composition.segments,composition.customization?.budget??null,composition.customization?.groups??null,compositionView,language.language]);
+      if(meter&&meter.dataset.signature!==sig){
+        meter.dataset.signature=sig;
+        const visible=composition.segments.filter(segment=>segment.fraction>0&&segment.tokens>0);
+        const groups=Array.isArray(composition.customization?.groups)?composition.customization.groups:[];
+        const groupSum=groups.reduce((n,g)=>n+(g.tokens>0?g.tokens:0),0);
+        const expanded=[];
+        for(const segment of visible){
+          if(segment.id==='remaining')continue;
+          if(segment.id==='customization'&&groups.length&&groupSum>0){
+            for(const groupItem of groups){
+              if(!(groupItem.tokens>0))continue;
+              const meta=COMPOSITION_GROUPS[groupItem.name];
+              expanded.push({cls:meta?meta[1]:'customization',label:meta?t(meta[0]):groupItem.name,tokens:groupItem.tokens,fraction:segment.fraction*(groupItem.tokens/groupSum),exact:true});
+            }
+            continue;
+          }
+          expanded.push({cls:segment.id,label:t(COMPOSITION_LABELS[segment.id]||'compositionTitle'),tokens:segment.tokens,fraction:segment.fraction,exact:segment.id==='customization',budget:segment.id==='customization'?composition.customization?.budget:null});
+        }
+        const totalFilled=expanded.reduce((n,item)=>n+item.fraction,0);
+        const tipFor=item=>{
+          const budget=item.budget?` / ${compact(item.budget)}`:'';
+          const winPct=Number((item.fraction*100).toFixed(1));
+          const kind=t(item.exact?'compositionExactTag':'compositionEstimateTag');
+          return `${item.label}: ${count(item.tokens)}${budget} ${tokUnit(item.tokens)} · ${t('compositionWindowShare',{pct:winPct})} · ${kind}`;
+        };
+        const remainingSeg=visible.find(segment=>segment.id==='remaining');
+        const meterParts=[...expanded,...(remainingSeg?[{cls:'remaining',label:t('compositionRemaining'),tokens:remainingSeg.tokens,fraction:remainingSeg.fraction,exact:false,remaining:true}]:[])];
+        meter.replaceChildren(...meterParts.map(item=>{
+          const bar=document.createElement('i');bar.className=`composition-seg-${item.cls}`;bar.style.width=`${Math.min(100,item.fraction*100)}%`;
+          attribute(bar,'title',item.remaining?`${item.label}: ${count(item.tokens)} ${tokUnit(item.tokens)}`:tipFor(item));
+          return bar;
+        }));
+        if(listEl){
+          const sorted=[...expanded].sort((a,b)=>b.fraction-a.fraction);
+          listEl.replaceChildren(...sorted.map(item=>{
+            const row=document.createElement('div');row.className='composition-row';
+            const left=document.createElement('span');left.className='composition-row-label';
+            const dot=document.createElement('i');dot.className=`composition-row-dot composition-seg-${item.cls}`;dot.setAttribute('aria-hidden','true');
+            const name=document.createElement('span');name.textContent=item.label;
+            left.append(dot,name);
+            const sharePct=totalFilled>0?(item.fraction/totalFilled)*100:0;
+            const pctText=sharePct<0.1?'<0.1%':`${Number(sharePct.toFixed(1))}%`;
+            const val=document.createElement('span');val.className='composition-row-pct';val.textContent=pctText;
+            attribute(row,'title',tipFor(item));
+            row.append(left,val);
+            return row;
+          }));
+        }
+        if(legend){
+          legend.replaceChildren(...expanded.map(item=>{
+            const chip=document.createElement('span');chip.className='composition-legend-item';
+            const dot=document.createElement('i');dot.className=`composition-legend-dot composition-seg-${item.cls}`;dot.setAttribute('aria-hidden','true');
+            const pctVal=Math.round(item.fraction*100),pctText=pctVal===0?'<1%':`${pctVal}%`;
+            const lbl=document.createElement('span');lbl.textContent=`${item.label} ${pctText}`;
+            attribute(chip,'title',tipFor(item));
+            chip.append(dot,lbl);
+            return chip;
+          }));
+        }
+      }
+    }
+    if(!trendSection||!trendOk)return;
+    const points=trend.points,W=280,H=36,P=3,max=Math.max(1,...points.map(point=>point.inputTokens||0));
+    const x=index=>P+(W-2*P)*(index/(points.length-1)),y=value=>H-P-(H-2*P)*((value||0)/max);
+    const svg=$('context-trend-svg'),sig=JSON.stringify([points.map(point=>point.inputTokens),trend.markers,language.language]);
+    if(svg&&svg.dataset.signature!==sig){
+      svg.dataset.signature=sig;
+      const markers=(Array.isArray(trend.markers)?trend.markers:[]).map(marker=>{
+        const at=x(Math.min(Math.max(marker.pointIndex||0,0),points.length-1));
+        const label=marker.kind==='checkpoint'?t('trendCheckpoint'):t('trendCompaction');
+        const tip=`${label}: ${Number.isFinite(marker.before)?count(marker.before):'—'} → ${Number.isFinite(marker.after)?count(marker.after):'—'}`;
+        return svgEl('g',{class:'trend-marker-group'},[
+          svgEl('title',{},[document.createTextNode(tip)]),
+          svgEl('line',{class:'trend-marker',x1:at,x2:at,y1:P,y2:H-P}),
+          svgEl('line',{class:'trend-marker-hit',x1:at,x2:at,y1:P,y2:H-P}),
+        ]);
+      });
+      const path=svgEl('path',{class:'trend-line',d:`M${x(0)} ${y(points[0].inputTokens)}`+points.slice(1).map((point,index)=>`L${x(index+1)} ${y(point.inputTokens)}`).join('')});
+      svg.replaceChildren(...markers,path);
+    }
+    text('trend-sample',t('trendSample',{n:count(trend.totalRequests??points.length)}));
+    attribute(trendSection,'title',t('trendBasis'));
+  }
+  let contextDetailAt=0;
+  // Opening the context card lazily asks for the customization token base.
+  // The panel caches GetTokenBase for 10 minutes and keeps attaching the
+  // cached value to later polls, so this stays quiet once satisfied.
+  function contextDetailRefresh(){
+    if(disposed||instDisposed||parked||!node?.isConnected)return;
+    if(!data?.speed?.context)return;
+    const wait=data.speed.contextComposition?.customization?.available?9*60*1000:15000;
+    if(Date.now()-contextDetailAt<wait)return;
+    contextDetailAt=Date.now();
+    const conversation=conversationId(),model=currentComposerModel(),epoch=requestEpoch;
+    void window.agPulseHost.getMetrics({conversationId:conversation,force:false,contextDetail:true,...(model?{composerModel:model}:{})}).then(result=>{
+      if(disposed||instDisposed||parked||epoch!==requestEpoch||!data?.speed)return;
+      const next=result?.speed?.contextComposition;
+      if(!next)return;
+      if(conversation&&result.speed?.conversationId&&result.speed.conversationId!==conversation)return;
+      data={...data,speed:{...data.speed,contextComposition:next}};
+      render();
+    }).catch(()=>{});
   }
   function refreshManually(syncUsage=false){
     if(manualRequest)return manualRequest.promise;
@@ -1545,6 +1710,7 @@ module.exports = function installAgPulseInlineWidget() {
     onLocaleChanged(){if(root){localize();render();tick();position();}},
     onSpeedStyleChanged(){if(root){attribute(node,'data-speed-style',speedStyle.style);localize();paintSpeed([],'idle',0.36,false);render();tick();position();}},
     onQuotaDisplayChanged(){if(root){localize();render();position();}},
+    onCompositionViewChanged(){if(root){clearTimeout(hoverTimer);hoverTimer=null;ignoreLeaveUntil=Date.now()+250;localize();render();position();}},
     onUsageScopeChanged(){if(root){render();}},
     syncUsageGuide(){usageDashboard?.syncGuideDismissed();},
     poll(){
