@@ -38,6 +38,8 @@ let languagePicker=null;
 let preferences=connectPreferences();
 const speedStyle=language.connectSpeedStyle({initial:localGet('ag-pulse-speed-style'),cache:value=>localSet('ag-pulse-speed-style',value),write:preferenceRequest,
   changed:()=>{applySpeedStyle();localize();render();}});
+const hostUiLocalization=language.connectHostUiLocalization({initial:localGet('ag-pulse-host-ui-localization')==='true',cache:value=>localSet('ag-pulse-host-ui-localization',value?'true':'false'),write:preferenceRequest,
+  changed:()=>{localize();}});
 function applySpeedStyle(){
   document.documentElement.dataset.speedStyle=speedStyle.style;
   $('speed-hero-icon')?.setAttribute('href',speedStyle.style==='cat'?'#gauge':'#pulse');
@@ -70,6 +72,17 @@ function localize(){
     button.setAttribute('aria-label',name);button.title=failed?`${name} · ${t('styleSaveFailed')}`:name;
     button.setAttribute('aria-pressed',String(speedStyle.style===value));button.dataset.saveFailed=String(failed);
   }
+  const hostI18nHint=t('hostUiLocalizationHint');
+  const hostI18nLabel=$('host-i18n-label');
+  if(hostI18nLabel)hostI18nLabel.title=hostI18nHint;
+  for(const button of document.querySelectorAll('[data-host-i18n-choice]')){
+    const value=button.dataset.hostI18nChoice==='true',active=hostUiLocalization.enabled===value,failed=hostUiLocalization.error&&active,labelText=t(value?'hostUiLocalizationOn':'hostUiLocalizationOff');
+    button.setAttribute('aria-label',`${t('hostUiLocalization')}: ${labelText}`);
+    button.title=failed?`${hostI18nHint} · ${t('hostUiLocalizationSaveFailed')}`:hostI18nHint;
+    button.setAttribute('aria-pressed',String(active));button.dataset.saveFailed=String(failed);
+  }
+  const hostI18nNote=$('host-i18n-save-note');
+  if(hostI18nNote){hostI18nNote.hidden=!hostUiLocalization.error;hostI18nNote.textContent=hostUiLocalization.error?t('hostUiLocalizationSaveFailed'):'';}
 }
 
 function chooseGroup(groups, speed, composerModel) {
@@ -509,7 +522,7 @@ function refresh(force = false) {
     if (!['live','stale','offline'].includes(value.connection)) throw new Error(t('invalidData'));
     snapshot = value;
     if(Object.hasOwn(value,'theme'))themeController.setHostTheme(value.theme);
-    if(value.preferences){preferences.sync(value.preferences);speedStyle.sync(value.preferences);}
+    if(value.preferences){preferences.sync(value.preferences);speedStyle.sync(value.preferences);hostUiLocalization.sync(value.preferences);}
     serverOffset = Date.parse(value.serverTime) - Date.now();
     if (!Number.isFinite(serverOffset)) serverOffset = 0;
     render();
@@ -527,8 +540,9 @@ $('quota-group').addEventListener('change', event => { selectedGroup = event.tar
 $('refresh-button').addEventListener('click', refreshManually);
 languagePicker=language.mountLanguagePicker({button:$('language-toggle'),parent:document.body,choose:value=>preferences.choose(value)});
 for(const button of document.querySelectorAll('[data-speed-style-choice]'))button.addEventListener('click',()=>void speedStyle.choose(button.dataset.speedStyleChoice));
+for(const button of document.querySelectorAll('[data-host-i18n-choice]'))button.addEventListener('click',()=>void hostUiLocalization.choose(button.dataset.hostI18nChoice==='true'));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-window.addEventListener('pagehide',()=>{preferences.dispose();speedStyle.dispose();languagePicker.close(false);});
+window.addEventListener('pagehide',()=>{preferences.dispose();speedStyle.dispose();hostUiLocalization.dispose();languagePicker.close(false);});
 window.addEventListener('pageshow',event=>{if(event.persisted)preferences=connectPreferences();});
 setInterval(updateCountdowns,1000);
 applySpeedStyle();

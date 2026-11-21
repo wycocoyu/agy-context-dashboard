@@ -27,15 +27,17 @@ store.onTrajectory=async(scope,id,raw,options={})=>{
 };
 store.onBackgroundResult=(scope,id,file,options)=>usage.ingestDisk(scope,id,file,options);
 const preferences=new PreferencesStore({file:join(data,'preferences.json')});
-const files=await Promise.all(['compat/i18n.cjs','compat/inline-widget.cjs','compat/theme.cjs','ide/surface.cjs','compat/usage-ui.cjs'].map(f=>readFile(join(root,f),'utf8')));
+const files=await Promise.all(['compat/i18n.cjs','compat/inline-widget.cjs','compat/theme.cjs','ide/surface.cjs','compat/usage-ui.cjs','compat/host-i18n.cjs','compat/host-i18n-dict.json'].map(f=>readFile(join(root,f),'utf8')));
 const extract=s=>s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'');
 if(!await ownership.claim())process.exit(0);
 const usageSource=`window.__agPulseUsageFactory=(${extract(files[4])});`;
+let hostI18nDict={};try{hostI18nDict=JSON.parse(files[6].replace(/^\uFEFF/,''));}catch{}
+const hostI18nSource=`window.__agPulseHostI18nDict=${JSON.stringify(hostI18nDict)};window.__agPulseHostI18nFactory=(${extract(files[5])});`;
 const owner=ownership.token;
 const adapter=`window.__agPulseSurface=(${extract(files[3])})();`;
-const source=makeRendererSource(...files.slice(0,3),owner,ownership.startedAt,adapter+usageSource);
+const source=makeRendererSource(...files.slice(0,3),owner,ownership.startedAt,adapter+usageSource+hostI18nSource);
 const webviewAdapter=`window.__agPulseSurface=(${extract(files[3])})({webview:true});`;
-const webviewSource=makeRendererSource(...files.slice(0,3),owner,ownership.startedAt,webviewAdapter+usageSource,{allowNested:true});
+const webviewSource=makeRendererSource(...files.slice(0,3),owner,ownership.startedAt,webviewAdapter+usageSource+hostI18nSource,{allowNested:true});
 // Each workbench has its own bridge request ID and DOM conversation ID. Empty
 // composers request account quota only; no most-recent-conversation fallback.
 const snapshot=async input=>{

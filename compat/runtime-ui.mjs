@@ -1,7 +1,8 @@
 // The plugin owns this adapter. App upgrades never need to preserve app.asar edits.
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, lstat } from 'node:fs/promises';
 import { request } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { platformPaths } from './platform.mjs';
 import { createHash } from 'node:crypto';
 
@@ -11,6 +12,58 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // binding so its older collector cannot answer the current widget's requests.
 const BINDING = '__agPulseRuntimeCallV4';
 const offline = message => ({ connection: 'offline', error: message, speed: null, groups: [] });
+const MAX_OVERRIDE_BYTES = 262144;
+const MAX_OVERRIDE_ENTRIES = 2000;
+const MAX_OVERRIDE_KEY_LEN = 200;
+const MAX_OVERRIDE_VAL_LEN = 400;
+const UNSAFE_OVERRIDE_TEXT = /[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/;
+const OVERRIDE_META_KEYS = new Set(['$schema', 'schema', 'license', 'locale', 'version', '_comment', 'patterns', 'exact']);
+
+const isPlainObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isUnsafeOverrideKey = key => /^(?:https?|wss?|file|vscode-[a-z0-9-]+|mailto|data|blob):/i.test(key)
+  || /^(?:[a-zA-Z]:[\\/]|\\\\|~\/|\.\.?\/|\/[^\s])/.test(key)
+  || /^[^\s]+\/[^\s]+$/.test(key)
+  || /^[^\s]+\\[^\s]+$/.test(key);
+
+export async function readHostI18nOverrides(files = []) {
+  const merged = Object.create(null);
+  let count = 0;
+  for (const file of [...new Set((Array.isArray(files) ? files : []).filter(f => typeof f === 'string' && f))]) {
+    let st;
+    try { st = await lstat(file); } catch { continue; }
+    if (st.isSymbolicLink() || !st.isFile() || st.size <= 0 || st.size > MAX_OVERRIDE_BYTES) continue;
+    let parsed;
+    try { parsed = JSON.parse((await readFile(file, 'utf8')).replace(/^\uFEFF/, '')); } catch { continue; }
+    if (!isPlainObject(parsed)) continue;
+    const sources = [];
+    if (isPlainObject(parsed.exact)) sources.push(parsed.exact);
+    sources.push(parsed);
+    for (const src of sources) {
+      for (const [rawKey, rawVal] of Object.entries(src)) {
+        if (count >= MAX_OVERRIDE_ENTRIES) break;
+        if (src === parsed && OVERRIDE_META_KEYS.has(rawKey)) continue;
+        if (typeof rawKey !== 'string') continue;
+        const key = rawKey.trim();
+        if (!key || key.length > MAX_OVERRIDE_KEY_LEN || UNSAFE_OVERRIDE_TEXT.test(key) || isUnsafeOverrideKey(key)) continue;
+        const hadKey = Object.hasOwn(merged, key);
+        if (rawVal === null || rawVal === false) {
+          merged[key] = null;
+          if (!hadKey) count++;
+          continue;
+        }
+        if (typeof rawVal !== 'string') continue;
+        const val = rawVal.trim();
+        if (!val || val.length > MAX_OVERRIDE_VAL_LEN || UNSAFE_OVERRIDE_TEXT.test(val)) continue;
+        merged[key] = val;
+        if (!hadKey) count++;
+      }
+    }
+  }
+  const plain = {};
+  for (const key of Object.keys(merged).sort()) plain[key] = merged[key];
+  const hash = count > 0 ? createHash('sha256').update(JSON.stringify(plain)).digest('hex') : 'empty';
+  return { overrides: plain, hash };
+}
 
 export function validTarget(target, port) {
   try {
@@ -128,6 +181,7 @@ function rendererBridge(binding, allowNested = false) {
     updatePlugin: input => call('update', input),
     getPreferences: () => call('preferences', {}),
     setPreferences: input => call('preferences', input),
+    getHostI18nOverrides: () => call('host-i18n', {}),
     report: input => { void call('diagnostic', input); },
   };
 }
@@ -142,7 +196,7 @@ export function makeRendererSource(i18n, widget, theme = '', owner = null, gener
   const upgrade = 'if(window.__agPulseRuntimeVersion!==' + JSON.stringify(version) + '){window.__agPulseDispose?.();window.__agPulseRuntimeBridge?.dispose();delete window.agPulseHost;window.__agPulseRuntimeVersion=' + JSON.stringify(version) + ';}';
   const binding=owner?BINDING+'_'+owner.replaceAll('-',''):BINDING;
   const rank=JSON.stringify([generation,owner||'']);
-  const code=upgrade + 'window.__agPulseRuntimeOwner='+JSON.stringify(owner)+';window.__agPulseRuntimeRank='+rank+';' + '(' + rendererBridge.toString() + ')('+JSON.stringify(binding)+','+JSON.stringify(allowNested===true)+');window.__agPulseI18nFactory=(' + extract(i18n) + ');'
+  const code=upgrade + 'window.__agPulseRuntimeOwner='+JSON.stringify(owner)+';window.__agPulseRuntimeRank='+rank+';window.__agPulseAllowNested='+JSON.stringify(allowNested===true)+';' + '(' + rendererBridge.toString() + ')('+JSON.stringify(binding)+','+JSON.stringify(allowNested===true)+');window.__agPulseI18nFactory=(' + extract(i18n) + ');'
     + (theme ? 'window.__agPulseThemeFactory=(' + extract(theme) + ');' : '') + extraSource + '(' + extract(widget) + ')();';
   // A delayed injection from a superseded instance cannot replace a newer UI.
   return owner?'if(!window.__agPulseRuntimeRank||window.__agPulseRuntimeRank[0]<'+generation+'||(window.__agPulseRuntimeRank[0]==='+generation+'&&window.__agPulseRuntimeRank[1]<='+JSON.stringify(owner)+')){'+code+'}':code;
@@ -150,18 +204,37 @@ export function makeRendererSource(i18n, widget, theme = '', owner = null, gener
 
 export class RuntimeUi {
   constructor({ snapshot, source, profile = platformPaths().profile,
-    dataDir, preferences, updater=null, owner=null, owns=async()=>true, enabled = async () => true, discover = discoverTargets, diagnoseError = null, onTargets = null, targetOrigin = target => new URL(target.url).origin, sourceForTarget = () => source, connect = (url, options) => new CdpConnection(url, options), interval = 3000, onMissingDebugPort = null } = {}) {
+    dataDir, preferences, overrideFiles = null, updater=null, owner=null, owns=async()=>true, enabled = async () => true, discover = discoverTargets, diagnoseError = null, onTargets = null, targetOrigin = target => new URL(target.url).origin, sourceForTarget = () => source, connect = (url, options) => new CdpConnection(url, options), interval = 3000, onMissingDebugPort = null } = {}) {
     this.snapshot = snapshot; this.source = source; this.profile = profile; this.dataDir = dataDir; this.enabled = enabled;
     this.discover = discover; this.diagnoseError = diagnoseError; this.onTargets = onTargets; this.connect = connect; this.interval = interval; this.sessions = new Map(); this.running = false;
     this.targetOrigin=targetOrigin;
     this.sourceForTarget=sourceForTarget;
     this.health = { state: 'waiting', mode: 'runtime', message: 'Waiting for the app renderer', windows: 0 };
     this.preferences=preferences;
+    this.overrideFiles=overrideFiles;
     this.updater=updater;
     this.owner=owner;this.owns=owns;
     this.onMissingDebugPort=onMissingDebugPort;
     this.binding=owner?BINDING+'_'+owner.replaceAll('-',''):BINDING;
     this.rendererTheme={};
+  }
+  defaultOverrideFiles() {
+    const files = [join(homedir(), '.antigravity-pulse', 'host-i18n-override.json')];
+    if (typeof this.preferences?.file === 'string' && this.preferences.file) {
+      files.push(join(dirname(this.preferences.file), 'host-i18n-override.json'));
+    }
+    return [...new Set(files)];
+  }
+  async pushPreferences(prefs, { exclude = null } = {}) {
+    if (this.stopping || !prefs || typeof prefs !== 'object' || prefs.error || !await this.owns()) return;
+    const expression = this.rendererGuard('window.__agPulseOnPreferences?.(' + JSON.stringify(prefs) + ');');
+    for (const connection of this.sessions.values()) {
+      if (connection === exclude || connection.closed || connection.revoked || !connection.contexts.size) continue;
+      const contextId = connection.ideWebview ? [...connection.contexts][0] : undefined;
+      try {
+        await connection.command('Runtime.evaluate', { expression, ...(contextId === undefined ? {} : { contextId }) });
+      } catch { /* Best-effort immediate push; polling resynchronizes on recovery. */ }
+    }
   }
   async setHealth(state, message, extra = {}) {
     const allowed = {};
@@ -221,8 +294,14 @@ export class RuntimeUi {
       }
       else if (input.type === 'preferences' && this.preferences) {
         const value=input.input;
-        if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['language','languageGuideDismissed','usageGuideDismissed','speedStyle','quotaDisplay','usageScope','autoRelaunchDebug'].includes(key)))throw new Error('Invalid preferences request');
+        if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['language','languageGuideDismissed','usageGuideDismissed','speedStyle','quotaDisplay','usageScope','autoRelaunchDebug','hostUiLocalization'].includes(key)))throw new Error('Invalid preferences request');
         result=Object.keys(value).length?await this.preferences.set(value):await this.preferences.get();
+        if(Object.keys(value).length&&result&&!result.error)void this.pushPreferences(result,{exclude:connection});
+      }
+      else if (input.type === 'host-i18n') {
+        result = await this.enabled()
+          ? await readHostI18nOverrides(this.overrideFiles ?? this.defaultOverrideFiles())
+          : { overrides: {}, hash: 'disabled' };
       }
       else if (input.type === 'diagnostic' && ['boot', 'mounted', 'mount-error'].includes(input.input?.stage)) {
         if (input.input.stage === 'mounted' && input.input.editorFound && input.input.composerFound) connection.mounted = true;

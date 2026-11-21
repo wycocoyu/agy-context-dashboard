@@ -54,13 +54,14 @@ const metrics = async input => {
 };
 const usageSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','usage-ui.cjs'),'utf8');return `window.__agPulseUsageFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
 const updateSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','update-ui.cjs'),'utf8');return `window.__agPulseUpdateFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
+const hostI18nSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','host-i18n.cjs'),'utf8');let dict={};try{dict=JSON.parse(readFileSync(join(HERE,'..','..','compat','host-i18n-dict.json'),'utf8').replace(/^\uFEFF/,''));}catch{}return `window.__agPulseHostI18nDict=${JSON.stringify(dict)};window.__agPulseHostI18nFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
 const staticFiles = { '/': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/format.mjs': ['format.mjs', 'text/javascript'] };
 const inlineSource=()=>{
   const file=readFileSync(join(HERE,'..','..','compat','inline-widget.cjs'),'utf8');
   const i18n=readFileSync(join(HERE,'..','..','compat','i18n.cjs'),'utf8');
   const theme=readFileSync(join(HERE,'..','..','compat','theme.cjs'),'utf8');
   const extract=s=>s.slice(s.indexOf('module.exports = ')+'module.exports = '.length).trim().replace(/;$/,'');
-  return updateSource()+usageSource()+`window.__agPulseI18nFactory=(${extract(i18n)});window.__agPulseThemeFactory=(${extract(theme)});(${extract(file)})();`;
+  return updateSource()+usageSource()+hostI18nSource()+`window.__agPulseI18nFactory=(${extract(i18n)});window.__agPulseThemeFactory=(${extract(theme)});(${extract(file)})();`;
 };
 const i18nModule=()=>{const s=readFileSync(join(HERE,'..','..','compat','i18n.cjs'),'utf8');return 'export const createI18n='+s.slice(s.indexOf('module.exports = ')+'module.exports = '.length);};
 const themeModule=()=>{const s=readFileSync(join(HERE,'..','..','compat','theme.cjs'),'utf8');return 'export const createTheme='+s.slice(s.indexOf('module.exports = ')+'module.exports = '.length);};
@@ -106,7 +107,7 @@ const integration = new RuntimeUi({
   preferences,
   updater,
   owner:ownership?.token,owns:()=>ownership?ownership.isOwner():true,
-  source: makeRendererSource(readFileSync(join(HERE,'..','..','compat','i18n.cjs'),'utf8'),readFileSync(join(HERE,'..','..','compat','inline-widget.cjs'),'utf8'),readFileSync(join(HERE,'..','..','compat','theme.cjs'),'utf8'),ownership?.token,ownership?.startedAt,updateSource()+usageSource()),
+  source: makeRendererSource(readFileSync(join(HERE,'..','..','compat','i18n.cjs'),'utf8'),readFileSync(join(HERE,'..','..','compat','inline-widget.cjs'),'utf8'),readFileSync(join(HERE,'..','..','compat','theme.cjs'),'utf8'),ownership?.token,ownership?.startedAt,updateSource()+usageSource()+hostI18nSource()),
   dataDir: paths.data,
   enabled: () => { const s = runtimeSettings(); return s.enabled !== false && s.inline !== false && s.mode !== 'legacy'; },
   onTargets: () => { missingPortTicks = 0; },
@@ -161,7 +162,7 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.api('/api/metrics', data => metrics({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1', quotaRefresh: data.quotaRefresh === true || data.quotaRefresh === '1', ...(data.usageOnly === true || data.usageOnly === '1' ? { usageOnly: true } : {}), ...(data.usageScope === 'local' || data.usageScope === 'account' ? { usageScope: data.usageScope } : {}) }), 'GET');
   app.api('/api/integration', () => integration.health, 'GET');
   app.api('/api/preferences',()=>preferences.snapshot(),'GET');
-  app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
+  app.api('/api/preferences',async data=>{try{const saved=await preferences.set(data);void integration.pushPreferences?.(saved);return saved;}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
   app.api('/api/relaunch-debug',async()=>{
     if(ownership&&!await ownership.isOwner())return new Response(JSON.stringify({error:'Sidecar ownership changed'}),{status:403,contentType:'application/json'});
     try{return await relaunchHost('manual');}
@@ -197,7 +198,7 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
       if(req.method==='POST'&&sameOrigin&&String(req.headers['content-type']).startsWith('application/json')){
         let body='';
         try {for await(const chunk of req){body+=chunk;if(body.length>1024)throw new Error('Preference payload too large');}
-          res.end(JSON.stringify(await preferences.set(JSON.parse(body))));
+          const saved=await preferences.set(JSON.parse(body));void integration.pushPreferences?.(saved);res.end(JSON.stringify(saved));
         }catch{res.writeHead(400);res.end(JSON.stringify({error:'Language preference could not be saved'}));}
         return;
       }
