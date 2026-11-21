@@ -31,7 +31,7 @@ const state=()=>page.evaluate(()=>{
 try{
  await page.goto(`http://127.0.0.1:${server.address().port}`);await page.waitForTimeout(1300);
  assert.deepEqual(errors,[],'IDE template must work under the host Trusted Types policy');
- let narrow=await state();assert.equal(narrow.id,id);assert.equal(narrow.density,'icons');assert.equal(narrow.layout,'ready');assert.equal(narrow.tps,'166.6');assert.equal(narrow.modelTruncated,false);assert.equal(narrow.icons.filter(e=>!e.hidden&&e.width===24).length,3);
+ let narrow=await state();assert.equal(narrow.id,id);assert.equal(narrow.density,'icons');assert.equal(narrow.layout,'ready');assert.equal(narrow.tps,'166.6');assert.equal(narrow.modelTruncated,false);assert.equal(narrow.icons.filter(e=>!e.hidden&&e.width===24).length,4);
  for(const card of ['speed','cache','context']){await page.locator(`[data-card=${card}]`).click();await page.waitForTimeout(150);assert.ok(await page.locator(`#${card}-card`).isVisible());await page.keyboard.press('Escape');}
  await page.setViewportSize({width:960,height:800});await page.waitForTimeout(400);let wide=await state();assert.equal(wide.density,'full');assert.equal(wide.layout,'ready');assert.equal(wide.modelTruncated,false);
  await page.setViewportSize({width:430,height:800});await page.waitForTimeout(350);assert.equal((await state()).density,'icons');
@@ -82,7 +82,7 @@ try{
  // A different child/subagent/history ID must never win over the input owner.
  await page.evaluate(other=>{const decoy={props:{cascadeId:other},__k:[]};testOwner.__k.unshift(decoy);},other);
  assert.equal((await state()).id,id);
- await page.evaluate(()=>{testOwner.props.cascadeId=null;});await page.waitForTimeout(1400);assert.equal((await state()).id,null);assert.equal((await state()).tps,'—');assert.equal((await state()).icons.filter(e=>!e.hidden).length,3);
+ await page.evaluate(()=>{testOwner.props.cascadeId=null;});await page.waitForTimeout(1400);assert.equal((await state()).id,null);assert.equal((await state()).tps,'—');assert.equal((await state()).icons.filter(e=>!e.hidden).length,4);
  assert.equal(await page.locator('#context-summary').textContent(),'尚无请求');assert.equal(await page.locator('#five-balance').textContent(),'80.0%');
  await page.evaluate(other=>{testOwner.props.cascadeId=other;},other);await page.waitForTimeout(1400);assert.equal((await state()).id,other);
  await page.evaluate(()=>{delete document.querySelector('.panel').__k;});await page.waitForTimeout(1400);assert.equal((await state()).id,null);assert.equal((await state()).tps,'—');

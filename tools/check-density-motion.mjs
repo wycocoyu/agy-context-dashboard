@@ -119,7 +119,7 @@ try{
     const frame=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);};
     w.style.flex='0 0 auto';w.style.maxWidth='100%';section.style.marginLeft='0';section.style.width='660px';await frame();
     let boundary=null;
-    for(let width=640;width>=340;width-=20){section.style.width=width+'px';await frame();if(w.dataset.density==='icons'){boundary=width;break;}}
+    for(let width=640;width>=240;width-=20){section.style.width=width+'px';await frame();if(w.dataset.density==='icons'){boundary=width;break;}}
     if(boundary===null)throw new Error('No natural density boundary');
     let changes=0;const mo=new MutationObserver(r=>changes+=r.length);mo.observe(w,{attributes:true,attributeFilter:['class']});
     for(let i=0;i<12;i++){section.style.width=(boundary+(i%2)*4)+'px';await frame();if(w.dataset.density!=='icons')throw new Error('Density chatter near threshold');}

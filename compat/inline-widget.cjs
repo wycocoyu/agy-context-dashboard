@@ -495,7 +495,7 @@ module.exports = function installAgPulseInlineWidget() {
   function localize(){
     attribute(node,'lang',language.language);
     for(const e of root.querySelectorAll('[data-i18n]')){const value=t(e.dataset.i18n);if(e.textContent!==value)e.textContent=value;}
-    for(const e of root.querySelectorAll('[data-i18n-aria]'))attribute(e,'aria-label',t(e.dataset.i18nAria));
+    for(const e of root.querySelectorAll('[data-i18n-aria]:not([data-card=cache]):not([data-card=quota])'))attribute(e,'aria-label',t(e.dataset.i18nAria));
     for(const e of root.querySelectorAll('[data-i18n-aria][title]:not([data-card])'))attribute(e,'title',t(e.dataset.i18nAria));
     for(const button of root.querySelectorAll('[data-language-choice]')){attribute(button,'aria-pressed',button.dataset.languageChoice===language.language);attribute(button,'data-save-failed',preferences.error);attribute(button,'title',preferences.error?t('languageSaveFailed'):(button.getAttribute('aria-label')||button.textContent));}
     text('language-save-note',preferences.error?t('languageSaveFailed'):'');
@@ -732,7 +732,8 @@ module.exports = function installAgPulseInlineWidget() {
     // A hidden ribbon must release its flex space as well as its hit targets.
     // The budget is independent of our own rectangle, so it recovers directly
     // when the sidebar is closed, without probing the native badge each frame.
-    node.classList.toggle('native-no-room',room<76);
+    const quotaChip=root?.querySelector('[data-card="quota"]');
+    node.classList.toggle('native-no-room',room<(quotaChip&&!quotaChip.hidden?102:76));
   }
   function currentModelTrigger(){
     const trigger=composer?.model?.isConnected?composer.model:(composer?.branch||composer?.row)?.querySelector('[data-testid="model-selector-trigger"]');
@@ -1464,7 +1465,7 @@ module.exports = function installAgPulseInlineWidget() {
           const v=view.show==='5h'?view.five?.remaining??null:view.week?.remaining??null;
           html=`<span class="dim">${tag(view.show)}</span> `+(v!==null?`<strong>${ringPct(v)}</strong>`:'<span class="dim">—</span>');
         }else html='<span class="dim">—</span>';
-        setMarkup(quotaTextEl,html);
+        if(quotaTextEl._markup!==html){quotaTextEl._markup=html;setMarkup(quotaTextEl,html);}
         const tips=[];
         if(view.five)tips.push(`5h ${t('remaining')} ${view.five.remaining!==null?ringPct(view.five.remaining):'—'}`);
         if(view.week)tips.push(`${t('weekShort')} ${t('remaining')} ${view.week.remaining!==null?ringPct(view.week.remaining):'—'}`);

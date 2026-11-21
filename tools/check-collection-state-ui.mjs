@@ -34,9 +34,9 @@ async function verifyGlyphs(page,strip,density,expected,screenshot=null){
   const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height};};
   return {chips:chips.length,cache:rect(cache),glyphs:[...cache.querySelectorAll(':scope>svg')].filter(visible).map(e=>({name:e.getAttribute('class')||'cache',...rect(e)})),total:chips.flatMap(e=>[...e.querySelectorAll(':scope>svg,:scope>.context-ring')]).filter(visible).length,stages:w.shadowRoot.querySelectorAll('.density-stage').length};
  });
- assert.equal(geometry.chips,3);
+ assert.equal(geometry.chips,4);
  assert.deepEqual(geometry.glyphs.map(e=>e.name),[expected],`${density}: exactly one cache state glyph must be visible`);
- assert.equal(geometry.total,3,'There must be exactly three visible strip glyphs, not just three buttons');
+ assert.equal(geometry.total,4,'There must be exactly four visible strip glyphs, not just four buttons');
  assert.equal(geometry.stages,0,'Density motion must remove visual copies');
  if(density==='icons'){
   assert.equal(geometry.cache.width,24);assert.equal(geometry.cache.height,24);
@@ -96,7 +96,7 @@ try{for(const lang of ['en','zh-CN','zh-TW']){
  for(const mode of ['saved','serialized','field','empty','normal','limited']){
   await page.keyboard.press('Escape');await page.selectOption('#scenario',mode);
   await page.waitForFunction(mode=>{const w=document.getElementById('ag-pulse-status-bar'),r=w.shadowRoot;if(['empty','normal'].includes(mode))return !w.dataset.collection&&w.dataset.density===(mode==='empty'?'icons':'full')&&!w.dataset.motion;return mode==='saved'?r.getElementById('tps').textContent==='50.0':r.getElementById('tps').textContent==='—';},mode);
-  if(mode==='empty')assert.equal(await strip.locator('.bar .chip:visible').count(),3);
+  if(mode==='empty')assert.equal(await strip.locator('.bar .chip:visible').count(),4);
   await strip.locator('[data-card=cache]').click();
   if(mode==='saved'){assert.match(await notice.locator('.collection-state').textContent(),/Last complete|上次完整/);assert.equal(await strip.locator('#tps').textContent(),'50.0');}
   if(mode==='field'){await page.waitForFunction(()=>document.getElementById('ag-pulse-status-bar').shadowRoot.querySelector('#cache-card .collection-budget-size').textContent.includes('16,385'));assert.doesNotMatch(await notice.locator('.collection-budget-size').textContent(),/MiB/);}
@@ -124,7 +124,7 @@ try{for(const lang of ['en','zh-CN','zh-TW']){
  await page.evaluate(()=>document.querySelector('.composer').style.maxWidth='');await page.selectOption('#scenario','limited');
  await page.waitForFunction(()=>document.getElementById('ag-pulse-status-bar')?.dataset.collection==='limited');
  await page.keyboard.press('Escape');await page.evaluate(()=>document.querySelector('.composer').style.maxWidth='260px');await page.waitForFunction(()=>document.getElementById('ag-pulse-status-bar')?.classList.contains('icons-only'));
- assert.equal(await strip.locator('.bar .collection-warning').isVisible(),true);assert.equal(await strip.locator('.bar .collection-label').isVisible(),false);assert.equal(await strip.locator('.bar .chip').count(),3);
+ assert.equal(await strip.locator('.bar .collection-warning').isVisible(),true);assert.equal(await strip.locator('.bar .collection-label').isVisible(),false);assert.equal(await strip.locator('.bar .chip').count(),4);
  await strip.locator('[data-card=context]').click();assert.equal(await strip.locator('#context-summary').textContent(),'—');assert.equal(await strip.locator('#five-balance').textContent(),'70.0%');
  await page.keyboard.press('Escape');await page.click('#theme');await page.waitForFunction(()=>document.getElementById('ag-pulse-status-bar')?.getAttribute('data-pulse-theme')==='light');await strip.locator('[data-card=context]').click();assert.equal(await strip.locator('#context-card .collection-notice').isVisible(),true);
 
