@@ -1,6 +1,17 @@
 // Pure transforms. No credentials, prompts, or message text enter the public result.
-import { contextMetrics, formatModelName } from './context.mjs';
+import { contextMetrics, formatModelName, quotaPoolForModel } from './context.mjs';
+import { estimateTextTokens } from './trajectory-json.mjs';
 import { classifyRates, RATE_VERSION, RATE_REASONS } from './rate-quality.mjs';
+const TOOL_STEP_RE=/SEARCH_WEB|BROWSE|RUN_COMMAND|COMMAND|READ|WRITE|EDIT|CODE_ACTION|TOOL|MCP|LIST|GREP|VIEW|FIND|TERMINAL/i;
+const cleanToolName=value=>typeof value==='string'?value.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,80):'';
+const normalizeToolSource=value=>{
+  const raw=typeof value==='string'?value.toUpperCase():'';
+  if(!raw)return '';
+  if(raw.includes('CUSTOM')||raw.includes('MCP'))return 'mcp';
+  if(raw.includes('PROVIDER'))return 'provider';
+  if(raw.includes('BUILTIN'))return 'builtin';
+  return raw.replace(/^CORTEX_COMPONENT_SOURCE_/,'').toLowerCase().slice(0,24);
+};
 export function seconds(value) {
   if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null;
   if (typeof value === 'string' && /^\d+(?:\.\d+)?s$/.test(value)) {
@@ -64,6 +75,8 @@ export function trajectoryMetrics(response, storage = null) {
   const steps = trajectory.steps || [];
   const counts = { input: 0, output: 0, responseOutput: 0, thinkingOutput: 0, cacheRead: 0, cacheWrite: 0 };
   let modelSeconds = 0, ttftSeconds = 0, ttftSamples = 0, missingTiming = 0;
+  let cacheMissSurges = 0, cacheMissSurgeTokens = 0;
+  const byModel = new Map();
   const cache = { inputTokens:0, cachedTokens:0, cacheWriteTokens:0, uncachedTokens:0, outputTokens:0, measuredRequests:0, missingRequests:0 };
   // Token availability is independent of cache-ratio availability. In particular,
   // a historical request may retain output usage but lack normalized input data.
@@ -140,9 +153,36 @@ export function trajectoryMetrics(response, storage = null) {
       !String(step.plannerResponse?.response || '').trim());
     const basis = visible !== null || thinking !== null ? 'response' : 'all-output';
     const rawModel = chat.modelDisplayName || chat.responseModel || String(chat.model || usage.model || '');
+    const formattedModel = formatModelName(rawModel) || '';
+    const modelKey = formattedModel || 'Unknown';
+    const pool = quotaPoolForModel(rawModel || modelKey, usage.apiProvider || '');
+    const bucketKey = `${pool}\0${modelKey}`;
+    let row = byModel.get(bucketKey);
+    if (!row) {
+      row = { model: modelKey, pool, requests: 0, uncachedTokens: 0, cachedTokens: 0, cacheWriteTokens: 0,
+        inputTokens: 0, outputTokens: 0, responseTokens: 0, thinkingTokens: 0, totalTokens: 0,
+        cacheMissSurges: 0, cacheMissSurgeTokens: 0 };
+      byModel.set(bucketKey, row);
+    }
+    const reqUncached = input ?? 0, reqRead = read ?? 0, reqWrite = write ?? 0, reqInput = reqUncached + reqRead + reqWrite, reqOutput = output ?? 0;
+    row.requests++;
+    row.uncachedTokens += reqUncached;
+    row.cachedTokens += reqRead;
+    row.cacheWriteTokens += reqWrite;
+    row.inputTokens += reqInput;
+    row.outputTokens += reqOutput;
+    row.responseTokens += responseTokens ?? 0;
+    row.thinkingTokens += thinking ?? 0;
+    row.totalTokens += reqInput + reqOutput;
+    if (reqRead === 0 && reqUncached >= 100000) {
+      row.cacheMissSurges++;
+      row.cacheMissSurgeTokens += reqUncached;
+      cacheMissSurges++;
+      cacheMissSurgeTokens += reqUncached;
+    }
     const sample = { responseTokens, duration, ttft, reasons, toolOnly,
       tps: responseTokens !== null && duration > 0 ? responseTokens / duration : null,
-      model: formatModelName(rawModel) || '', basis,
+      model: formattedModel, basis,
       profile: JSON.stringify([usage.apiProvider || '',chat.responseModel || usage.model || chat.model || chat.modelDisplayName || '',basis]) };
     samples.push(sample);
     ids.set(id,{signature,sample});
@@ -166,8 +206,41 @@ export function trajectoryMetrics(response, storage = null) {
     }
   }
   const basisSamples = acceptedCount ? accepted : samples;
-  const tools = steps.filter(s => /SEARCH_WEB|BROWSE|RUN_COMMAND|COMMAND|READ|WRITE|EDIT|CODE_ACTION|TOOL|MCP|LIST|GREP|VIEW|FIND|TERMINAL/i.test(String(s.type || '')) || s.metadata?.toolCall);
-  const toolSeconds = storage ? storage.toolSeconds() : unionSeconds(tools.map(s => [Date.parse(s.metadata.startedAt || s.metadata.createdAt), Date.parse(s.metadata.completedAt)]));
+  let rounds = 0, toolTotalCalls = 0, toolArgTokens = 0;
+  const toolIntervals = storage ? null : [];
+  const toolMap = new Map();
+  for (const s of steps) {
+    const typeText = String(s?.type || '');
+    if (/USER_INPUT/.test(typeText)) rounds++;
+    const tc = s?.metadata?.toolCall;
+    const isTool = TOOL_STEP_RE.test(typeText) || Boolean(tc);
+    if (!isTool) continue;
+    if (toolIntervals) toolIntervals.push([Date.parse(s.metadata?.startedAt || s.metadata?.createdAt), Date.parse(s.metadata?.completedAt)]);
+    const explicitName = cleanToolName(tc?.name);
+    const fallbackName = cleanToolName(typeText.replace(/^CORTEX_STEP_TYPE_/, '').toLowerCase());
+    const name = explicitName || fallbackName || (tc ? 'tool' : '');
+    if (name) {
+      const argValue = tc?.argumentsJson;
+      const args = tokenCount(argValue) ?? (typeof argValue === 'string' ? estimateTextTokens(argValue) : 0);
+      const source = normalizeToolSource(s.metadata?.toolSource);
+      let entry = toolMap.get(name);
+      if (!entry) { entry = { name, calls: 0, argTokens: 0, source }; toolMap.set(name, entry); }
+      else if (!entry.source && source) entry.source = source;
+      entry.calls++;
+      entry.argTokens += args;
+      toolTotalCalls++;
+      toolArgTokens += args;
+    }
+  }
+  const toolSeconds = storage ? storage.toolSeconds() : unionSeconds(toolIntervals);
+  const modelBreakdown = [...byModel.values()]
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.requests - a.requests || a.model.localeCompare(b.model))
+    .slice(0, 16);
+  const toolSummary = {
+    totalCalls: toolTotalCalls,
+    argTokens: toolArgTokens,
+    tools: [...toolMap.values()].sort((a, b) => b.argTokens - a.argTokens || b.calls - a.calls || a.name.localeCompare(b.name)).slice(0, 16),
+  };
   const latest = samples.at(-1) || null;
   const lastChat = storage ? storage.lastChat() : [...generators].reverse().find(g => g.chatModel)?.chatModel;
   let lastActiveMs = NaN;
@@ -190,8 +263,9 @@ export function trajectoryMetrics(response, storage = null) {
   return {
     source: 'Antigravity request metadata', status: response.status || null,
     conversationId: trajectory.cascadeId || null,
-    steps: Number(response.numTotalSteps ?? steps.length), rounds: steps.filter(s => /USER_INPUT/.test(String(s.type))).length,
+    steps: Number(response.numTotalSteps ?? steps.length), rounds,
     requests: ids.size, measuredRequests: acceptedCount, missingTiming, excludedTiming, rateWarnings, timingReasons, rateVersion: RATE_VERSION, counts,
+    modelBreakdown, cacheMissSurges, cacheMissSurgeTokens, toolSummary,
     tokens:{...tokens,totalTokens,
       complete:tokens.missingInputRequests===0&&tokens.missingOutputRequests===0&&inputParts.every(value=>value!==null)&&tokens.outputTokens!==null&&totalTokens!==null},
     cache:{...cache,totalTokens:cache.inputTokens+cache.outputTokens,hitRate:cache.inputTokens>0?cache.cachedTokens/cache.inputTokens:null,complete:cache.missingRequests===0},

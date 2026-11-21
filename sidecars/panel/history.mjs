@@ -2,7 +2,7 @@ import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { formatModelName, safeContext } from './context.mjs';
+import { formatModelName, quotaPoolForModel, safeContext } from './context.mjs';
 import { safeTranscriptStats } from './transcript.mjs';
 import { RATE_VERSION, RATE_REASONS } from './rate-quality.mjs';
 import {safeTaskUsage} from './task-usage.mjs';
@@ -14,9 +14,44 @@ const numeric = ['steps','rounds','requests','measuredRequests','missingTiming',
 const counts = ['input','output','responseOutput','thinkingOutput','cacheRead','cacheWrite'];
 const cache = ['inputTokens','cachedTokens','cacheWriteTokens','uncachedTokens','outputTokens','measuredRequests','missingRequests','totalTokens','hitRate'];
 const tokens = ['inputTokens','cachedTokens','cacheWriteTokens','uncachedTokens','outputTokens','measuredRequests','inputRequests','outputRequests','missingInputRequests','missingOutputRequests','totalTokens'];
+const POOLS = ['gemini','3p','local','other'];
+const ROLES = ['coordinator','worker','monitor','sidecar'];
 const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 const tokenNumber = value => number(value) && Number.isSafeInteger(value);
+
+function safeSessionModelBreakdown(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object' || Array.isArray(row) || typeof row.model !== 'string') continue;
+    const model = (formatModelName(row.model) || row.model.replace(/[\x00-\x1f\x7f]/g, '').trim()).slice(0, 120);
+    if (!model || GUID.test(model)) continue;
+    const pool = POOLS.includes(row.pool) ? row.pool : quotaPoolForModel(model, '');
+    const nums = ['requests','uncachedTokens','cachedTokens','cacheWriteTokens','inputTokens','outputTokens','responseTokens','thinkingTokens','totalTokens','cacheMissSurges','cacheMissSurgeTokens'];
+    const clean = { model, pool };
+    for (const k of nums) clean[k] = tokenNumber(row[k]) ? row[k] : 0;
+    out.push(clean);
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
+function safeToolSummary(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { totalCalls: 0, argTokens: 0, tools: [] };
+  const tools = [];
+  if (Array.isArray(raw.tools)) {
+    for (const t of raw.tools) {
+      if (!t || typeof t !== 'object' || Array.isArray(t) || typeof t.name !== 'string') continue;
+      const name = t.name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
+      if (!name) continue;
+      const source = typeof t.source === 'string' ? t.source.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 24) : '';
+      tools.push({ name, calls: tokenNumber(t.calls) ? t.calls : 0, argTokens: tokenNumber(t.argTokens) ? t.argTokens : 0, source });
+      if (tools.length >= 16) break;
+    }
+  }
+  return { totalCalls: tokenNumber(raw.totalCalls) ? raw.totalCalls : 0, argTokens: tokenNumber(raw.argTokens) ? raw.argTokens : 0, tools };
+}
 
 export function safeMetrics(value, conversationId) {
   if (!GUID.test(conversationId) || !value || typeof value !== 'object') throw new Error('Invalid conversation statistics');
@@ -78,6 +113,17 @@ export function safeMetrics(value, conversationId) {
   result.model = formattedModel ? formattedModel.slice(0,256) : null;
   result.status = typeof value.status === 'string' && /^[A-Z0-9_]+$/.test(value.status) ? value.status : null;
   result.context = safeContext(value.context) || null;
+  if (Object.hasOwn(value, 'modelBreakdown')) result.modelBreakdown = safeSessionModelBreakdown(value.modelBreakdown);
+  if (Object.hasOwn(value, 'cacheMissSurges')) result.cacheMissSurges = tokenNumber(value.cacheMissSurges) ? value.cacheMissSurges : 0;
+  if (Object.hasOwn(value, 'cacheMissSurgeTokens')) result.cacheMissSurgeTokens = tokenNumber(value.cacheMissSurgeTokens) ? value.cacheMissSurgeTokens : 0;
+  if (Object.hasOwn(value, 'toolSummary')) result.toolSummary = safeToolSummary(value.toolSummary);
+  if (value.sessionMeta && typeof value.sessionMeta === 'object' && !Array.isArray(value.sessionMeta)) {
+    result.sessionMeta = {
+      agentRole: ROLES.includes(value.sessionMeta.agentRole) ? value.sessionMeta.agentRole : 'coordinator',
+      isSubagent: value.sessionMeta.isSubagent === true,
+      isSidecar: value.sessionMeta.isSidecar === true,
+    };
+  }
   const task=safeTaskUsage(value.taskUsage);
   if(task)result.taskUsage=task;
   // Preserve the previous verified task snapshot for recovery when a large

@@ -11,8 +11,35 @@ const MODEL_ALIASES = new Map([
   ['model_placeholder_m318', 'Gemini 3.8 Flash (High)'],
   ['model_placeholder_m319', 'Gemini 3.8 Flash (Medium)'],
   ['model_placeholder_m320', 'Gemini 3.8 Flash (Low)'],
+  ['model_placeholder_m532', 'Gemini 4 Neon (High)'],
+  ['model_placeholder_m533', 'Gemini 4 Neon (Medium)'],
+  ['model_placeholder_m534', 'Gemini 4 Neon (Low)'],
+  ['model_placeholder_m535', 'Gemini 4 Neon (XHigh)'],
+  ['model_placeholder_m427', 'Gemini 4 Carbon (High)'],
+  ['model_placeholder_m437', 'Gemini 4 Carbon (Medium)'],
+  ['model_placeholder_m438', 'Gemini 4 Carbon (Low)'],
+  ['model_placeholder_m417', 'Gemini 4 Argon (High)'],
+  ['model_placeholder_m418', 'Gemini 4 Argon (Medium)'],
+  ['model_placeholder_m419', 'Gemini 4 Argon (Low)'],
+  ['model_placeholder_m525', 'Gemini 4 Hydrogen (High)'],
+  ['model_placeholder_m526', 'Gemini 4 Hydrogen (Medium)'],
+  ['model_placeholder_m527', 'Gemini 4 Hydrogen (Low)'],
+  ['model_placeholder_m528', 'Gemini 4 Hydrogen (XHigh)'],
+  ['model_placeholder_m537', 'Orchestrator (Neon)'],
+  ['gemini-pro-orchestrator-neon', 'Orchestrator (Neon)'],
+  ['model_placeholder_m667', 'Orchestrator (Carbon)'],
+  ['gemini-pro-orchestrator', 'Orchestrator (Carbon)'],
+  ['model_placeholder_m681', 'Orchestrator (Argon)'],
+  ['gemini-pro-orchestrator-argon', 'Orchestrator (Argon)'],
+  ['model_placeholder_m669', 'Gemini 4 Hydrogen (Orchestrator)'],
+  ['gemini-flash-worker-agy', 'Gemini 4 Hydrogen (Orchestrator)'],
+  ['model_placeholder_m18', 'Gemini 2.5 Pro'],
+  ['model_placeholder_m148', 'Gemini 2.5 Pro'],
+  ['model_placeholder_m50', 'Gemini 2.5 Flash'],
+  ['model_placeholder_m198', 'Gemini 2.5 Flash'],
   ['model_placeholder_m35', 'Claude Sonnet 4.6 (Thinking)'],
   ['model_placeholder_m26', 'Claude Opus 4.6 (Thinking)'],
+  ['model_placeholder_m405', 'Claude Sonnet 5.5 (High)'],
   ['model_openai_gpt_oss_120b_medium', 'GPT-OSS 120B (Medium)'],
   ['gemini-pro-orchestrator-g1-pro', 'Orchestrator (Argon)'],
 ]);
@@ -28,6 +55,8 @@ const EFFORT_LABELS = {
   max: 'Max',
   thinking: 'Thinking',
   tiered: 'Tiered',
+  orchestrator: 'Orchestrator',
+  trial: 'Trial',
 };
 
 const titleCase = value => value.split(/[-_\s]+/).filter(Boolean)
@@ -97,12 +126,22 @@ export function identifyModel(rawModel, explicitEffort = null) {
     };
   }
 
-  match = normalized.match(/^gemini-4-(hydrogen|argon|carbon)(?:-(n|extra-?high|xhigh|extra|high|medium|low|max))?$/);
+  match = normalized.match(/^gemini-2\.5-(pro|flash)(?:-(n|high|medium|low))?$/);
+  if (match) {
+    return {
+      key: `gemini-2.5-${match[1]}`, quotaGroup: 'gemini',
+      display: `Gemini 2.5 ${titleCase(match[1])}${formatEffort(match[2], effort)}`,
+      verified132: false, verified133: false, verified15x: !wordPrefixed,
+    };
+  }
+
+  match = normalized.match(/^gemini-4-(hydrogen|argon|carbon|neon)(?:-(trial))?(?:-(n|extra-?high|xhigh|extra|high|medium|low|max|orchestrator))?(?:-(trial))?$/);
   if (match) {
     const tier = match[1];
+    const trial = match[2] || match[4] ? ' (Trial)' : '';
     return {
       key: `gemini-4-${tier}`, quotaGroup: tier === 'argon' ? 'gemini-argon' : 'gemini',
-      display: `Gemini 4 ${titleCase(tier)}${formatEffort(match[2], effort)}`,
+      display: `Gemini 4 ${titleCase(tier)}${formatEffort(match[3], effort)}${trial}`,
       verified132: false, verified133: false, verified15x: !wordPrefixed,
     };
   }
@@ -110,6 +149,13 @@ export function identifyModel(rawModel, explicitEffort = null) {
   if (/^orchestrator(?:-argon)?$/.test(normalized)) {
     return {
       key: 'orchestrator-argon', quotaGroup: 'gemini-argon', display: 'Orchestrator (Argon)',
+      verified132: false, verified133: false, verified15x: !wordPrefixed,
+    };
+  }
+  match = normalized.match(/^orchestrator-(carbon|neon)$/);
+  if (match) {
+    return {
+      key: `orchestrator-${match[1]}`, quotaGroup: 'gemini', display: `Orchestrator (${titleCase(match[1])})`,
       verified132: false, verified133: false, verified15x: !wordPrefixed,
     };
   }
@@ -145,7 +191,7 @@ export function identifyModel(rawModel, explicitEffort = null) {
   }
 
   const quotaGroup = /\bargon\b/i.test(candidate) ? 'gemini-argon'
-    : /^(?:gemini\b|model_google_gemini_)/i.test(candidate) ? 'gemini'
+    : /^(?:gemini\b|model_google_gemini_)/i.test(candidate) || /\b(?:hydrogen|carbon|neon|orchestrator)\b/i.test(candidate) ? 'gemini'
     : /^(?:claude\b|gpt\b|o[134](?:-|$)|perplexity\b)/i.test(candidate) ? '3p'
     : null;
   return { key: null, quotaGroup, display: candidate, verified132: false, verified133: false, verified15x: false };

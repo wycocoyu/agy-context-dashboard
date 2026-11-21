@@ -144,3 +144,39 @@ test('saved numeric estimates survive restart; zero-step undo replaces them even
  const record=await (await import('node:fs/promises')).readFile(history.file(scope,id),'utf8');assert.equal(record.includes('content'),false);
 });
 function emptyStats(){return safeTranscriptStats({status:'ready',complete:true,userTokens:0,assistantTokens:0,toolTokens:0,systemTokens:0,matchedSteps:0,compactionMarkers:0,imageSteps:0});}
+
+test('transcript breakdown tracks tool args, 2.34.0 GENERIC tool steps, EPHEMERAL_MESSAGE, thinking, and bloat warnings without retaining raw text',async t=>{
+ const {reader,file}=await fixture(t);
+ const hugeResult='R'.repeat(240000);
+ const rows=[
+  row(0,'USER_INPUT','hello'),
+  row(1,'EPHEMERAL_MESSAGE','reminder text'),
+  row(2,'PLANNER_RESPONSE','abcd',{thinking:'t'.repeat(400),tool_calls:[{name:'grep_search',args:{Query:'PRIVATE_SECRET'}},{name:'view_file',args:{Path:'PRIVATE'}}]}),
+  row(3,'GENERIC','find result'),
+  row(4,'GENERIC',hugeResult),
+ ];
+ await writeFile(file,jsonl(rows));
+ const active={trajectory:{steps:[
+  {type:'CORTEX_STEP_TYPE_USER_INPUT',metadata:{createdAt:time(0)}},
+  {type:'CORTEX_STEP_TYPE_EPHEMERAL_MESSAGE',metadata:{createdAt:time(1)}},
+  {type:'CORTEX_STEP_TYPE_PLANNER_RESPONSE',metadata:{createdAt:time(2)}},
+  {type:'CORTEX_STEP_TYPE_GREP_SEARCH',metadata:{createdAt:time(3),toolCall:{name:'grep_search'},toolSource:'CORTEX_COMPONENT_SOURCE_BUILTIN'}},
+  {type:'CORTEX_STEP_TYPE_GENERIC',metadata:{createdAt:time(4),toolCall:{name:'view_file',argumentsJson:'{"Path":"PRIVATE"}'},toolSource:'CORTEX_COMPONENT_SOURCE_BUILTIN'}},
+ ]}};
+ reader.request(scope,id,active);await reader.idle();const stats=reader.peek(scope,id);
+ assert.equal(stats.status,'partial');
+ assert.equal(stats.matchedSteps,5);
+ assert.equal(stats.thinkingTokens,100);
+ assert.equal(stats.responseTokens,1);
+ assert.equal(stats.systemTokens,4);
+ assert.ok(stats.toolCallTokens>0);
+ assert.equal(stats.toolBreakdown.length,2);
+ assert.equal(stats.toolBreakdown[0].name,'view_file');
+ assert.equal(stats.toolBreakdown[0].resultTokens,60000);
+ assert.equal(stats.heavyToolCalls,1);
+ assert.equal(stats.bloatWarnings.length,1);
+ assert.equal(stats.bloatWarnings[0].severity,'critical');
+ assert.equal(stats.bloatWarnings[0].tool,'view_file');
+ assert.equal(JSON.stringify(stats).includes('PRIVATE'),false);
+ assert.equal(JSON.stringify(stats).includes('RRRR'),false);
+});

@@ -70,3 +70,25 @@ test('RPC errors do not replace a cached quota with made-up percentages', async 
   const store = new MetricsStore(client);store.quota=[{id:'saved'}];store.quotaAt=1000;
   const snapshot = await store.snapshot();assert.equal(snapshot.connection,'stale');assert.equal(snapshot.groups[0].id,'saved');assert.equal(snapshot.speed,null);
 });
+test('two-phase orchestrator breakdown separates planning and executor burn and tracks cache-miss surges & toolSummary', () => {
+  const data = trajectoryMetrics({trajectory:{cascadeId:'11111111-1111-1111-1111-111111111111',
+    steps:[
+      {type:'CORTEX_STEP_TYPE_USER_INPUT'},
+      {type:'CORTEX_STEP_TYPE_GENERIC',metadata:{toolCall:{name:'grep_search',argumentsJson:'{"Query":"foo"}'},toolSource:'CORTEX_COMPONENT_SOURCE_BUILTIN'}},
+      {type:'CORTEX_STEP_TYPE_MCP_TOOL',metadata:{toolCall:{name:'mcp_read',argumentsJson:'x'.repeat(400)},toolSource:'CORTEX_COMPONENT_SOURCE_CUSTOMIZATION'}},
+    ],
+    generatorMetadata:[
+      {chatModel:{model:'MODEL_PLACEHOLDER_M537',responseModel:'gemini-pro-orchestrator-neon',streamingDuration:'3s',usage:{responseId:'p1',inputTokens:'120000',cacheReadTokens:'0',outputTokens:'4000',responseOutputTokens:'1000',thinkingOutputTokens:'3000',apiProvider:'API_PROVIDER_GOOGLE_GEMINI'}}},
+      {chatModel:{model:'MODEL_PLACEHOLDER_M669',responseModel:'gemini-flash-worker-agy',modelDisplayName:'Gemini 4 Hydrogen (Orchestrator)',streamingDuration:'2s',usage:{responseId:'e1',inputTokens:'15000',cacheReadTokens:'80000',outputTokens:'2500',responseOutputTokens:'2000',thinkingOutputTokens:'500',apiProvider:'API_PROVIDER_GOOGLE_GEMINI'}}},
+    ]}});
+  assert.equal(data.model,'Gemini 4 Hydrogen (Orchestrator)');
+  assert.equal(data.modelBreakdown.length,2);
+  const orch=data.modelBreakdown.find(m=>m.model==='Orchestrator (Neon)');
+  const exec=data.modelBreakdown.find(m=>m.model==='Gemini 4 Hydrogen (Orchestrator)');
+  assert.ok(orch && exec);
+  assert.equal(orch.thinkingTokens,3000);assert.equal(orch.cacheMissSurges,1);assert.equal(orch.cacheMissSurgeTokens,120000);
+  assert.equal(exec.cachedTokens,80000);assert.equal(exec.cacheMissSurges,0);
+  assert.equal(data.cacheMissSurges,1);assert.equal(data.cacheMissSurgeTokens,120000);
+  assert.equal(data.toolSummary.totalCalls,2);
+  assert.equal(data.toolSummary.tools[0].name,'mcp_read');assert.equal(data.toolSummary.tools[0].argTokens,100);assert.equal(data.toolSummary.tools[0].source,'mcp');
+});

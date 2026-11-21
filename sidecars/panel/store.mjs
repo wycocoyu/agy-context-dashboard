@@ -9,6 +9,7 @@ import { TranscriptReader } from './transcript.mjs';
 import {DelegatedUsage} from './delegated-usage.mjs';
 import {safeTaskUsage} from './task-usage.mjs';
 import {delegatedIds} from './delegation.mjs';
+import {classifyAgentRole} from './swarm.mjs';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL_SCOPE = createHash('sha256').update('ag-pulse:local-unauthenticated').digest('hex');
@@ -19,7 +20,7 @@ export class MetricsStore {
     this.client = client; this.history = history; this.onTrajectory=onTrajectory; this.onBackgroundResult=onBackgroundResult; this.transcripts=transcripts; this.owns=owns;
     this.background=background===undefined?(typeof client.streamTrajectoryPage==='function'&&history.directory?new BackgroundStatistics({directory:join(dirname(history.directory),'collection-jobs'),owns:()=>this.owned(),onComplete:(...args)=>this.acceptBackground(...args)}):null):background;
     if(this.background&&client.reader)client.reader.isBackgroundManaged=id=>this.sessions.get(id)?.backgroundOnly===true;
-    this.delegated=new DelegatedUsage(client,{owns,
+    this.delegated=new DelegatedUsage(client,{owns,brainRoot:transcripts?.root??null,
       onSource:async(scope,id,raw,options={})=>{if(this.owned()&&scope===this.storageScope()&&this.onTrajectory&&(!options.isCurrent||options.isCurrent()===true))await this.onTrajectory(scope,id,raw,options);},
       onUpdate:async(scope,id,taskUsage,delegatedConversations)=>{
         const entry=this.sessions.get(id);if(!this.owned()||scope!==this.storageScope()||!entry?.data)return;
@@ -97,9 +98,19 @@ export class MetricsStore {
     const response = await this.client.call('GetAllCascadeTrajectories',{excludeSubtrajectories:false});
     if (!this.owned() || scope !== this.identity || epoch !== this.epoch) throw new Error('后台已重新连接，请等待刷新');
     this.client.reader?.ingestSummaries?.(response.trajectorySummaries);
-    this.summaries = Object.entries(response.trajectorySummaries || {}).map(([id, value]) => ({
-      id, title: value.summary || '未命名会话', modifiedAt: value.lastModifiedTime, status: value.status,stepCount:value.stepCount,lastUserInputStepIndex:value.lastUserInputStepIndex,
-    })).sort((a, b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
+    this.summaries = Object.entries(response.trajectorySummaries || {}).map(([id, value]) => {
+      const meta = value?.trajectoryMetadata;
+      const isSubagent = Boolean(meta?.parentConversationId || meta?.subagentSpec || (Number(meta?.nestingDepth) > 0));
+      const isSidecar = Boolean(meta?.sourceMetadata?.sidecar);
+      return {
+        id, title: value.summary || '未命名会话', modifiedAt: value.lastModifiedTime, status: value.status,
+        stepCount: value.stepCount, lastUserInputStepIndex: value.lastUserInputStepIndex,
+        isSubagent, isSidecar, hideFromList: meta?.sourceMetadata?.hideFromConversationList === true,
+        parentConversationId: meta?.parentConversationId || null,
+        rootConversationId: meta?.rootConversationId || meta?.sourceMetadata?.rootConversationId || null,
+        agentRole: classifyAgentRole({ isRoot: !isSubagent, subagentSpec: meta?.subagentSpec, agentScript: meta?.agentScript, sourceMetadata: meta?.sourceMetadata }),
+      };
+    }).sort((a, b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
     this.summariesAt = Date.now();
     return this.summaries;
   }
@@ -171,7 +182,16 @@ export class MetricsStore {
       if (!current()) throw new Error('后台已重新连接，请等待刷新');
       entry.collection=null;entry.lastSuccessAt=new Date().toISOString();
       const fresh = trajectoryMetrics(raw);
-      fresh.delegatedConversations=[...new Set([...delegatedIds(id,raw,this.client.reader?.summaries||{}),...(entry.data?.delegatedConversations||[])])].slice(0,128);
+      const summaryMeta = this.client.reader?.summaries?.[id]?.trajectoryMetadata
+        || Object.entries(this.client.reader?.summaries || {}).find(([k]) => k.toLowerCase() === id)?.[1]?.trajectoryMetadata || null;
+      const isSubagent = Boolean(summaryMeta?.parentConversationId || summaryMeta?.subagentSpec || (Number(summaryMeta?.nestingDepth) > 0));
+      const isSidecar = Boolean(summaryMeta?.sourceMetadata?.sidecar);
+      fresh.sessionMeta = {
+        agentRole: classifyAgentRole({ isRoot: !isSubagent, subagentSpec: summaryMeta?.subagentSpec, agentScript: summaryMeta?.agentScript, sourceMetadata: summaryMeta?.sourceMetadata }),
+        isSubagent, isSidecar,
+      };
+      const task=this.delegated.tasks.get(id);
+      fresh.delegatedConversations=[...new Set([...delegatedIds(id,raw,this.client.reader?.summaries||{},task?.swarmMembers||null),...(entry.data?.delegatedConversations||[])])].slice(0,128);
       fresh.taskUsage=this.delegated.request(scope,id,raw,{saved:entry.data?.taskUsage,knownIds:fresh.delegatedConversations,force,isCurrent:current});
       // Optional background I/O cannot delay or fail the core metrics request.
       try { if(this.transcripts)fresh.transcriptStats=this.transcripts.request(scope,id,raw); } catch {}

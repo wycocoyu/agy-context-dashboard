@@ -2,7 +2,12 @@ import {budgetError} from './collection-state.mjs';
 // Incremental JSON projection for trajectory RPCs. Large prompts, tool results,
 // images and executor payloads are validated and skipped, never buffered.
 import {normalizeConversationId} from './delegation.mjs';
-const scalar='scalar',nonempty='nonempty',presence='presence',calls='calls',guid='conversationId';
+const scalar='scalar',nonempty='nonempty',presence='presence',calls='calls',guid='conversationId',tokenSize='tokenSize';
+export function estimateTextTokens(text){
+ if(typeof text!=='string'||!text.length)return 0;
+ const other=(text.match(/[^\x00-\x7f]/g)||[]).length;
+ return Math.ceil((text.length-other)/4+other/1.5);
+}
 const usage=Object.fromEntries(['inputTokens','outputTokens','responseOutputTokens','thinkingOutputTokens','cacheReadTokens','cacheWriteTokens','apiProvider','responseId','messageId','model'].map(k=>[k,scalar]));
 const duration={seconds:scalar,nanos:scalar};
 const generators={'*':{stepIndices:{'*':scalar},chatModel:{usage,model:scalar,modelDisplayName:scalar,responseModel:scalar,
@@ -10,15 +15,20 @@ const generators={'*':{stepIndices:{'*':scalar},chatModel:{usage,model:scalar,mo
  chatStartMetadata:{createdAt:scalar,contextWindowMetadata:{estimatedTokensUsed:scalar,maxContextTokens:scalar}}}}};
 const subagentResult={conversationId:guid},subagentResults={'*':subagentResult};
 const invokeSubagent={conversationId:guid,results:subagentResults};
-const steps={'*':{type:scalar,metadata:{createdAt:scalar,startedAt:scalar,completedAt:scalar,toolCall:presence},
+const toolCall={name:scalar,argumentsJson:tokenSize};
+const steps={'*':{type:scalar,metadata:{createdAt:scalar,startedAt:scalar,completedAt:scalar,toolCall,toolSource:scalar,generatorModel:scalar},
  plannerResponse:{response:nonempty,toolCalls:calls},invokeSubagent}};
-const trajectoryMetadata={parentConversationId:guid,rootConversationId:guid,nestingDepth:scalar};
+const subagentSpec={typeName:scalar,role:scalar,share:presence,branch:presence,model:scalar,modelTier:scalar,modelOption:scalar};
+const agentScript={name:scalar};
+const sourceMetadata={sidecar:presence,tool:presence,hideFromConversationList:scalar,rootConversationId:guid};
+const trajectoryMetadata={parentConversationId:guid,rootConversationId:guid,nestingDepth:scalar,subagentSpec,agentScript,sourceMetadata};
 const summary={summary:scalar,stepCount:scalar,lastModifiedTime:scalar,status:scalar,lastUserInputStepIndex:scalar,
  hasActiveChildren:scalar,hasRunningSubagents:scalar,notFullyIdle:scalar,trajectoryMetadata};
 // Only this dictionary may project dynamic object keys. Ordinary object schemas
 // retain their exact-key allowlist; '*' remains an array selector everywhere else.
 const summaryEntry=Symbol('summaryEntry'),summaries={[summaryEntry]:summary};
-const objectOnly=new Set([subagentResult,invokeSubagent,trajectoryMetadata,summary,summaries]);
+const objectOnly=new Set([toolCall,subagentResult,invokeSubagent,subagentSpec,agentScript,sourceMetadata,trajectoryMetadata,summary,summaries]);
+const omitIfEmpty=new Set([subagentSpec,agentScript,sourceMetadata]);
 const arrayOnly=new Set([subagentResults]);
 const structured=node=>objectOnly.has(node)||arrayOnly.has(node);
 const stringAllowed=node=>node===scalar||typeof node==='object'&&!structured(node);
@@ -33,6 +43,7 @@ export class TrajectoryJson {
  charge(n){if((this.retained+=n)>this.maxRetainedBytes)throw budgetError('retained-fields',this.retained,this.maxRetainedBytes);}
  node(){
   const f=this.stack.at(-1);if(!f)return this.projection;
+  if(f.node===tokenSize)return tokenSize;
   if(f.node===summaries)return !f.array&&normalizeConversationId(f.key)?f.node[summaryEntry]:undefined;
   if(objectOnly.has(f.node)&&f.array||arrayOnly.has(f.node)&&!f.array)return undefined;
   const key=f.array?'*':f.key;return f.node&&typeof f.node==='object'&&Object.hasOwn(f.node,key)?f.node[key]:undefined;
@@ -52,6 +63,10 @@ export class TrajectoryJson {
   const f=this.stack.at(-1);
   if(c==='{'||c==='['){
    if(!this.valueAllowed()||this.stack.length>=64)this.fail();const node=this.node(),array=c==='[';
+   if(node===tokenSize){
+    const sizeAcc=f?.sizeAcc||{ascii:0,other:0};
+    this.stack.push({node:tokenSize,array,out:null,count:0,key:null,expect:array?'valueOrEnd':'keyOrEnd',streamKind:null,baseRetained:this.retained,sizeAcc,sizeRoot:!f?.sizeAcc});return;
+   }
    const out=typeof node==='object'&&(!objectOnly.has(node)||!array)&&(!arrayOnly.has(node)||array)?(array?[]:{}):null;if(out)this.charge(64);
    let streamKind=null;
    const customKind=this.recordKeys&&f?.node===this.projection&&this.recordKeys.includes(f.key)?f.key:null;
@@ -63,7 +78,10 @@ export class TrajectoryJson {
   }
   if(c==='}'||c===']'){
    if(!f||f.array!==(c===']')||!['commaOrEnd',f.array?'valueOrEnd':'keyOrEnd'].includes(f.expect))this.fail();
-   this.stack.pop();this.finishValue(f.node===presence?true:f.node===calls?(f.count?[{}]:[]):f.out||DROP);return;
+   this.stack.pop();
+   if(f.node===tokenSize){this.finishValue(f.sizeRoot?Math.ceil(f.sizeAcc.ascii/4+f.sizeAcc.other/1.5):DROP);return;}
+   const emptyDrop=omitIfEmpty.has(f.node)&&(!f.out||!Object.keys(f.out).length);
+   this.finishValue(emptyDrop?DROP:f.node===presence?true:f.node===calls?(f.count?[{}]:[]):f.out||DROP);return;
   }
   if(c===':'){if(!f||f.array||f.expect!=='colon')this.fail();f.expect='value';return;}
   if(c===','){if(!f||f.expect!=='commaOrEnd')this.fail();f.expect=f.array?'value':'key';return;}
@@ -73,13 +91,16 @@ export class TrajectoryJson {
   const f=this.stack.at(-1),key=f&&!f.array&&['key','keyOrEnd'].includes(f.expect);
   if(!key&&!this.valueAllowed())this.fail();
   const node=key?null:this.node();
-  this.token={kind:'string',key,node,buffer:'',overflow:false,escape:0,hex:'',any:false,ascii:0,other:0};
+  this.token={kind:'string',key,node,sizeAcc:f?.sizeAcc||null,buffer:'',overflow:false,escape:0,hex:'',any:false,ascii:0,other:0};
  }
  stringPart(text){
   const t=this.token;if(t.node===nonempty&&/\S/u.test(text)||t.node===presence&&text.length)t.any=true;
-  if(t.node==='textEstimate'){
-   const other=(text.match(/[^\x00-\x7f]/g)||[]).length;t.ascii+=text.length-other;t.other+=other;
-   if(t.buffer.length<256)t.buffer+=text.slice(0,256-t.buffer.length);
+  if(t.node==='textEstimate'||t.node===tokenSize||t.sizeAcc){
+   const other=(text.match(/[^\x00-\x7f]/g)||[]).length;
+   if(t.sizeAcc){t.sizeAcc.ascii+=text.length-other;t.sizeAcc.other+=other;return;}
+   t.ascii+=text.length-other;t.other+=other;
+   if(t.node==='textEstimate'&&t.buffer.length<256)t.buffer+=text.slice(0,256-t.buffer.length);
+   if(t.node===tokenSize)return;
   }
   // IDs are bounded independently of arbitrary prompt-sized strings. Invalid
   // values are still validated as JSON but never retained as relation metadata.
@@ -91,10 +112,11 @@ export class TrajectoryJson {
  }
  endString(){
   const t=this.token;this.token=null;
-  if(t.key){const f=this.stack.at(-1);f.key=t.overflow?null:f.node===summaries?normalizeConversationId(t.buffer):t.buffer;f.expect='colon';return;}
+  if(t.key){const f=this.stack.at(-1);if(t.sizeAcc){t.sizeAcc.ascii+=3;f.expect='colon';return;}f.key=t.overflow?null:f.node===summaries?normalizeConversationId(t.buffer):t.buffer;f.expect='colon';return;}
   let value=DROP;
   if(t.node===nonempty)value=t.any?'1':'';
   else if(t.node==='textEstimate')value={tokens:Math.ceil(t.ascii/4+t.other/1.5),prefix:t.buffer};
+  else if(t.node===tokenSize){if(t.sizeAcc)t.sizeAcc.ascii+=2;else value=Math.ceil(t.ascii/4+t.other/1.5);}
   else if(t.node===presence)value=t.any;
   else if(t.node===guid){const id=!t.overflow&&normalizeConversationId(t.buffer);if(id){value=id;this.charge(value.length*2);}}
   else if(stringAllowed(t.node)){value=t.buffer;this.charge(value.length*2);}
@@ -103,6 +125,11 @@ export class TrajectoryJson {
  literalEnd(){
   const t=this.token;this.token=null;
   if(!/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(t.buffer))this.fail();
+  if(t.node===tokenSize){
+   if(t.sizeAcc){t.sizeAcc.ascii+=t.buffer.length+1;this.finishValue(DROP);}
+   else this.finishValue(t.buffer==='null'?0:Math.ceil(t.buffer.length/4));
+   return;
+  }
   const value=JSON.parse(t.buffer);this.finishValue(t.node&&t.node!==guid&&!structured(t.node)?value:DROP);
  }
  write(text,{stopAfterRecord=false}={}){

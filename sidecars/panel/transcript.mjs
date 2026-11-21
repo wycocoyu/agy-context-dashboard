@@ -12,53 +12,122 @@ const GUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCOPE=/^[0-9a-f]{64}$/;
 const fields=['userTokens','assistantTokens','toolTokens','systemTokens'];
 const count=n=>Number.isSafeInteger(n)&&n>=0;
-const projection={step_index:'scalar',type:'scalar',source:'scalar',created_at:'scalar',content:'textEstimate',thinking:'textEstimate'};
+const toolCallItem={name:'scalar',args:'tokenSize',arguments:'tokenSize',argumentsJson:'tokenSize'};
+const projection={step_index:'scalar',type:'scalar',source:'scalar',created_at:'scalar',content:'textEstimate',thinking:'textEstimate',tool_calls:{'*':toolCallItem}};
 const statuses=['loading','ready','partial','unavailable'];
 const reasons=['reading','missing','unsafe-path','invalid-boundary','row-limit','invalid-record','unmatched-record','incomplete-line','io-error'];
+const cleanTool=v=>typeof v==='string'?v.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64):'';
+const normalizeToolSource=v=>{
+ const raw=typeof v==='string'?v.toUpperCase():'';
+ if(!raw)return '';
+ if(raw.includes('CUSTOM')||raw.includes('MCP'))return 'mcp';
+ if(raw.includes('PROVIDER'))return 'provider';
+ if(raw.includes('BUILTIN'))return 'builtin';
+ return raw.replace(/^CORTEX_COMPONENT_SOURCE_/,'').toLowerCase().slice(0,24);
+};
 export function transcriptBrainRoot(host='app'){
  if(!['app','ide'].includes(host))throw Error('Unsupported transcript host');
  return join(homedir(),'.gemini',host==='ide'?'antigravity-ide':'antigravity','brain');
+}
+function safeToolBreakdown(raw){
+ if(!Array.isArray(raw))return [];
+ const out=[];
+ for(const item of raw){
+  if(!item||typeof item!=='object'||Array.isArray(item))continue;
+  const name=cleanTool(item.name);if(!name)continue;
+  if(!['calls','argTokens','resultTokens','maxResultTokens'].every(k=>count(item[k])))continue;
+  const source=typeof item.source==='string'?item.source.replace(/[\x00-\x1f\x7f]/g,'').slice(0,24):'';
+  out.push({name,calls:item.calls,argTokens:item.argTokens,resultTokens:item.resultTokens,maxResultTokens:item.maxResultTokens,source});
+  if(out.length>=16)break;
+ }
+ return out;
+}
+function safeBloatWarnings(raw){
+ if(!Array.isArray(raw))return [];
+ const out=[];
+ for(const w of raw){
+  if(!w||typeof w!=='object'||Array.isArray(w))continue;
+  if(!['tool-result','tool-args','thinking'].includes(w.kind)||!['warning','critical'].includes(w.severity))continue;
+  const tool=cleanTool(w.tool)||'unknown';
+  if(!count(w.stepIndex)||!count(w.tokens))continue;
+  out.push({kind:w.kind,tool,stepIndex:w.stepIndex,tokens:w.tokens,severity:w.severity});
+  if(out.length>=8)break;
+ }
+ return out;
 }
 export function safeTranscriptStats(value){
  if(!value||typeof value!=='object'||!statuses.includes(value.status)||value.version!==undefined&&value.version!==1)return null;
  const result={version:1,status:value.status,reason:reasons.includes(value.reason)?value.reason:null,
   source:'local-recorded-text',estimated:true,complete:value.status==='ready'&&value.complete===true};
  for(const key of [...fields,'matchedSteps','compactionMarkers','imageSteps'])result[key]=count(value[key])?value[key]:0;
+ for(const key of ['responseTokens','thinkingTokens','toolCallTokens','heavyToolCalls'])result[key]=count(value[key])?value[key]:0;
+ result.toolBreakdown=safeToolBreakdown(value.toolBreakdown);
+ result.bloatWarnings=safeBloatWarnings(value.bloatWarnings);
  result.totalTokens=fields.reduce((n,k)=>n+result[k],0);
  if(!count(result.totalTokens))return null;
  // Unknown/unavailable is not a measured zero, and malformed saved estimates
  // cannot claim complete coverage. Extra fields and arbitrary URLs are dropped.
  if([...fields,'matchedSteps','compactionMarkers','imageSteps'].some(k=>!count(value[k])))result.complete=false;
  if(result.matchedSteps>8192||result.compactionMarkers>result.matchedSteps||result.imageSteps>result.matchedSteps)return null;
- if(['unavailable','loading'].includes(result.status)){for(const k of [...fields,'matchedSteps','compactionMarkers','imageSteps','totalTokens'])result[k]=0;result.complete=false;}
+ if(['unavailable','loading'].includes(result.status)){
+  for(const k of [...fields,'matchedSteps','compactionMarkers','imageSteps','totalTokens','responseTokens','thinkingTokens','toolCallTokens','heavyToolCalls'])result[k]=0;
+  result.toolBreakdown=[];result.bloatWarnings=[];result.complete=false;
+ }
  return result;
 }
 const empty=(status,reason)=>safeTranscriptStats({status,reason,...Object.fromEntries([...fields,'matchedSteps','compactionMarkers','imageSteps'].map(k=>[k,0]))});
 const timestamp=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):null;
 const timeQuantum=value=>typeof value==='string'?10**Math.max(0,3-(value.match(/\.(\d+)(?:Z|[+-]\d\d:\d\d)$/)?.[1].length||0)):1000;
 const stepType=value=>typeof value==='string'&&value.length<=128?value.replace(/^CORTEX_STEP_TYPE_/,''):null;
-// Verified local App log mappings (2026-10-14). Unknown tool enums do not
+// Verified App log & 2.34.0 host tool mappings. Unknown tool enums do not
 // silently match GENERIC: their records remain partial/unmatched.
-const genericHostTypes=new Set(['RUN_COMMAND','VIEW_FILE']);
+const genericHostTypes=new Set([
+ 'RUN_COMMAND','VIEW_FILE','VIEW_FILE_OUTLINE','VIEW_CODE_ITEM','LIST_DIR',
+ 'FIND_BY_NAME','GREP_SEARCH','CODE_ACTION','WRITE_TO_FILE','REPLACE_FILE_CONTENT',
+ 'MULTI_REPLACE_FILE_CONTENT','READ_URL_CONTENT','SEARCH_WEB','MCP_TOOL',
+ 'INVOKE_SUBAGENT','COMMAND_STATUS','SEND_COMMAND_INPUT','READ_TERMINAL',
+ 'OPEN_BROWSER_URL','BROWSER_SUBAGENT',
+]);
 function boundary(raw,maxRows){
  const steps=raw?.trajectory?.steps??raw?.steps;
  if(!Array.isArray(steps)||steps.length>maxRows)return null;
  // Array position is the host's step index. Line count is never a boundary.
- const active=steps.map(s=>({type:stepType(s?.type),time:timestamp(s?.metadata?.createdAt),quantum:timeQuantum(s?.metadata?.createdAt)}));
+ const active=steps.map(s=>({
+  type:stepType(s?.type),
+  time:timestamp(s?.metadata?.createdAt),
+  quantum:timeQuantum(s?.metadata?.createdAt),
+  hasToolCall:Boolean(s?.metadata?.toolCall),
+  toolName:cleanTool(s?.metadata?.toolCall?.name),
+  toolSource:normalizeToolSource(s?.metadata?.toolSource),
+ }));
  return {active};
 }
 function summary(record){
  if(!count(record.step_index)||typeof record.type!=='string'||!record.type.length||record.type.length>128)return null;
  const type=stepType(record.type),content=record.content?.tokens||0,thinking=record.thinking?.tokens||0;
  if(!count(content)||!count(thinking)||!count(content+thinking))return null;
- const row={index:record.step_index,type,time:timestamp(record.created_at),quantum:timeQuantum(record.created_at),...Object.fromEntries(fields.map(k=>[k,0]))};
+ const row={index:record.step_index,type,time:timestamp(record.created_at),quantum:timeQuantum(record.created_at),...Object.fromEntries(fields.map(k=>[k,0])),responseTokens:0,thinkingTokens:0,toolCallTokens:0};
  // Explicit step semantics only. A quoted checkpoint or a model name containing
  // "image" cannot create a marker or an image-generation event.
  row.compaction=type==='COMPACTION'||type==='CONTEXT_COMPACTION'||type==='CHECKPOINT'&&/^\s*(?:\[?context (?:summary|compaction)\]?|conversation (?:summary|checkpoint)|checkpoint summary|# Resuming from a compaction|<CONTEXT_SUMMARY>)/i.test(record.content?.prefix||'')?1:0;
  row.image=['GENERATE_IMAGE','IMAGE_GENERATION'].includes(type)?1:0;
  if(type==='USER_INPUT')row.userTokens=content;
- else if(type==='PLANNER_RESPONSE')row.assistantTokens=content+thinking;
- else if(type==='SYSTEM_MESSAGE'||type==='CHECKPOINT'||row.compaction)row.systemTokens=content;
+ else if(type==='PLANNER_RESPONSE'){
+  row.assistantTokens=content+thinking;
+  row.responseTokens=content;
+  row.thinkingTokens=thinking;
+  if(Array.isArray(record.tool_calls)&&record.tool_calls.length){
+   const calls=[];
+   for(const tc of record.tool_calls){
+    if(!tc||typeof tc!=='object')continue;
+    const args=(count(tc.args)?tc.args:0)||(count(tc.arguments)?tc.arguments:0)||(count(tc.argumentsJson)?tc.argumentsJson:0);
+    row.toolCallTokens+=args;
+    const name=cleanTool(tc.name);
+    if(name&&calls.length<16)calls.push([name,args]);
+   }
+   if(calls.length)row.calls=calls;
+  }
+ }else if(type==='SYSTEM_MESSAGE'||type==='EPHEMERAL_MESSAGE'||type==='CHECKPOINT'||row.compaction)row.systemTokens=content;
  else if(type==='GENERIC'||type==='TOOL_RESULT'||type==='TOOL_OUTPUT')row.toolTokens=content;
  else row.unknown=content>0||thinking>0;
  return row;
@@ -68,10 +137,22 @@ function aggregate(entry){
  if(entry.error)return empty('unavailable',entry.error);
  if(!entry.state)return empty('loading','reading');
  const s=entry.state,out=empty('partial','reading');let partial=s.invalid,unmatched=false;
- for(const row of s.rows.values()){
+ const toolMap=new Map(),warnings=[],matched=[...s.rows.values()].sort((a,b)=>a.index-b.index);
+ const pendingCalls=[];
+ const ensureTool=(name,source='')=>{
+  let item=toolMap.get(name);
+  if(!item){item={name,callCount:0,resultCount:0,argTokens:0,resultTokens:0,maxResultTokens:0,source};toolMap.set(name,item);}
+  else if(!item.source&&source)item.source=source;
+  return item;
+ };
+ const pushWarn=(kind,tool,stepIndex,tokens)=>{
+  if(tokens<20000)return;
+  warnings.push({kind,tool:tool||'unknown',stepIndex,tokens,severity:tokens>=50000?'critical':'warning'});
+ };
+ for(const row of matched){
   const active=entry.boundary.active[row.index];
   if(!active)continue; // Includes zero steps and records beyond an undo point.
-  const typeMatches=active.type===row.type||row.type==='GENERIC'&&genericHostTypes.has(active.type);
+  const typeMatches=active.type===row.type||row.type==='GENERIC'&&(genericHostTypes.has(active.type)||active.hasToolCall);
   // Logs in the installed App truncate creation times to whole seconds while
   // the RPC uses nanoseconds. Compare at the log's declared precision; never
   // invent an arbitrary time tolerance or call a coarse match fully verified.
@@ -81,8 +162,34 @@ function aggregate(entry){
   // Missing identity timestamps are a best-effort match, never full coverage.
   if(active.time===null||row.time===null||active.quantum!==row.quantum||active.type!==row.type||row.unknown)partial=true;
   out.matchedSteps++;for(const k of fields)out[k]+=row[k];
+  out.responseTokens+=row.responseTokens;out.thinkingTokens+=row.thinkingTokens;out.toolCallTokens+=row.toolCallTokens;
   out.compactionMarkers+=row.compaction;out.imageSteps+=row.image;
+  if(row.thinkingTokens>=50000)pushWarn('thinking','thinking',row.index,row.thinkingTokens);
+  if(row.calls){
+   for(const [name,args]of row.calls){
+    const t=ensureTool(name);t.callCount++;t.argTokens+=args;
+    if(args>=20000){out.heavyToolCalls++;pushWarn('tool-args',name,row.index,args);}
+    pendingCalls.push(name);
+   }
+  }
+  if(row.type==='GENERIC'||row.type==='TOOL_RESULT'||row.type==='TOOL_OUTPUT'){
+   const fallbackType=active.type&&active.type!=='GENERIC'?active.type.toLowerCase():'';
+   const toolName=active.toolName||pendingCalls.shift()||fallbackType||(row.toolTokens>0?'tool':'');
+   if(toolName){
+    const t=ensureTool(toolName,active.toolSource);
+    t.resultCount++;t.resultTokens+=row.toolTokens;
+    if(row.toolTokens>t.maxResultTokens)t.maxResultTokens=row.toolTokens;
+    if(row.toolTokens>=20000){out.heavyToolCalls++;pushWarn('tool-result',toolName,row.index,row.toolTokens);}
+   }else if(row.toolTokens>=20000){
+    out.heavyToolCalls++;pushWarn('tool-result','tool',row.index,row.toolTokens);
+   }
+  }
  }
+ out.toolBreakdown=[...toolMap.values()]
+  .map(t=>({name:t.name,calls:Math.max(t.callCount,t.resultCount),argTokens:t.argTokens,resultTokens:t.resultTokens,maxResultTokens:t.maxResultTokens,source:t.source}))
+  .sort((a,b)=>(b.resultTokens+b.argTokens)-(a.resultTokens+a.argTokens)||b.calls-a.calls||a.name.localeCompare(b.name))
+  .slice(0,16);
+ out.bloatWarnings=warnings.sort((a,b)=>b.tokens-a.tokens||a.stepIndex-b.stepIndex).slice(0,8);
  out.totalTokens=fields.reduce((n,k)=>n+out[k],0);
  const covered=out.matchedSteps===entry.boundary.active.length;
  if(s.limit){out.reason='row-limit';partial=true;}

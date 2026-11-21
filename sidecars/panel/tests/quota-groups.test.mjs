@@ -126,3 +126,17 @@ test('quotaForecast and groupQuotaPace estimate depletion, pace deltas and warm-
   assert.equal(ui.groupQuotaPace({id:'gemini',name:'Gemini',windows:{'5h':idle}},now).pace,'idle');
  }
 });
+
+test('2.34.0 Neon and Orchestrator placeholders classify to the expected quota family',async()=>{
+ const {quotaModelFamily}=await import('../usage.mjs');
+ const ui=createI18n('en');
+ const groups=[{id:'gemini',name:'Gemini Models',windows:{'5h':{available:true,remaining:.8}}},{id:'3p',name:'Claude and GPT models',windows:{'5h':{available:true,remaining:.5}}}];
+ for(const model of ['MODEL_PLACEHOLDER_M532','gemini-4-neon-xhigh','MODEL_PLACEHOLDER_M537','gemini-pro-orchestrator','MODEL_PLACEHOLDER_M667','MODEL_PLACEHOLDER_M669','gemini-flash-worker-agy']){
+  assert.equal(quotaModelFamily(model),'gemini',model);
+  assert.equal(ui.chooseQuotaGroup(groups,model).id,'gemini',model);
+ }
+ assert.equal(quotaModelFamily('MODEL_PLACEHOLDER_M405'),'3p');
+ assert.equal(ui.chooseQuotaGroup(groups,'MODEL_PLACEHOLDER_M405').id,'3p');
+ assert.equal(quotaModelFamily('MODEL_PLACEHOLDER_M681'),'gemini-argon');
+ assert.equal(ui.quotaGroupKind({id:'neon',name:'Gemini 4 Neon'}),'gemini');
+});

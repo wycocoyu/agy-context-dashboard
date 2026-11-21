@@ -3,7 +3,7 @@
 export const conversationId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const normalizeConversationId=value=>typeof value==='string'&&conversationId.test(value)?value.toLowerCase():null;
 
-export function delegatedIds(id,raw,summaries={}){
+export function delegatedIds(id,raw,summaries={},swarmMembers=null){
  const parent=normalizeConversationId(id);if(!parent)return [];
  const ids=new Set(),add=value=>{const child=normalizeConversationId(value);if(child&&child!==parent)ids.add(child);};
  const steps=raw?.trajectory?.steps??raw?.steps;
@@ -15,7 +15,11 @@ export function delegatedIds(id,raw,summaries={}){
  }
  if(summaries&&typeof summaries==='object'&&!Array.isArray(summaries))for(const [child,summary]of Object.entries(summaries)){
   const metadata=summary?.trajectoryMetadata;
-  if(normalizeConversationId(metadata?.parentConversationId)===parent||normalizeConversationId(metadata?.rootConversationId)===parent)add(child);
+  if(normalizeConversationId(metadata?.parentConversationId)===parent||normalizeConversationId(metadata?.rootConversationId)===parent||normalizeConversationId(metadata?.sourceMetadata?.rootConversationId)===parent)add(child);
+ }
+ if(swarmMembers&&typeof swarmMembers==='object'){
+  const ownsSwarm=swarmMembers.swarmId===parent||swarmMembers.byId?.get?.(parent)?.role==='coordinator';
+  if(ownsSwarm&&Array.isArray(swarmMembers.ids))for(const mid of swarmMembers.ids)add(mid);
  }
  return [...ids];
 }

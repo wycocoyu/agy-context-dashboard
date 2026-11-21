@@ -111,3 +111,20 @@ test('preview command makes all three quota families reproducible without changi
  assert.match(result.stdout,/^Gemini\s/m);assert.match(result.stdout,/^Claude\s/m);
  assert.match(result.stdout,/Cache --/);assert.doesNotMatch(result.stdout,/\x1b/);
 });
+
+test('2.34.0 Neon, Carbon/Argon Orchestrator, and Claude Sonnet 5.5 map to exact quota groups in CLI', async () => {
+ const { identifyModel, quotaGroupForModel } = await import('../metrics.mjs');
+ for (const [raw, display, group] of [
+  ['MODEL_PLACEHOLDER_M532', 'Gemini 4 Neon (High)', 'gemini'],
+  ['MODEL_PLACEHOLDER_M535', 'Gemini 4 Neon (XHigh)', 'gemini'],
+  ['MODEL_PLACEHOLDER_M537', 'Orchestrator (Neon)', 'gemini'],
+  ['MODEL_PLACEHOLDER_M667', 'Orchestrator (Carbon)', 'gemini'],
+  ['MODEL_PLACEHOLDER_M681', 'Orchestrator (Argon)', 'gemini-argon'],
+  ['MODEL_PLACEHOLDER_M669', 'Gemini 4 Hydrogen (Orchestrator)', 'gemini'],
+  ['gemini-flash-worker-agy', 'Gemini 4 Hydrogen (Orchestrator)', 'gemini'],
+  ['MODEL_PLACEHOLDER_M405', 'Claude Sonnet 5.5 (High)', '3p'],
+ ]) {
+  assert.equal(identifyModel(raw)?.display, display, raw);
+  assert.equal(quotaGroupForModel(raw), group, raw);
+ }
+});

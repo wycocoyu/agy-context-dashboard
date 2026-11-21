@@ -19,7 +19,7 @@ export function quotaModelFamily(value){
   const resolved=raw?usageModelKey(raw):'';
   const s=raw+' '+resolved;
   if(/(?:^|[^a-z])argon(?:$|[^a-z])/i.test(s))return 'gemini-argon';
-  if(/gemini|hydrogen|carbon|orchestrator/i.test(s))return 'gemini';
+  if(/gemini|hydrogen|carbon|neon|orchestrator/i.test(s))return 'gemini';
   if(/claude|sonnet|opus|haiku|anthropic|gpt|openai|perplexity|fable/i.test(s)||/(?:^|[^a-z0-9])o[134](?:$|[^a-z0-9])/i.test(s)||/^3p(?:$|[-_])/i.test(raw.trim()))return '3p';
   return null;
 }

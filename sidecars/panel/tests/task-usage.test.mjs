@@ -77,7 +77,7 @@ test('request hashes match ledger identity and preserve conversation-scoped fall
   assert.equal(measured[0].id,createHash('sha256').update(`response:${provider}:private-response`).digest('hex'));
   const serialized=JSON.stringify(measured);
   for(const secret of ['PRIVATE','private-response','private-message',parent,child,start,'stepIndices'])assert.equal(serialized.includes(secret),false);
-  for(const row of measured)assert.deepEqual(Object.keys(row).sort(),['id','apiProvider','inputTokens','cacheReadTokens','cacheWriteTokens','outputTokens'].sort());
+  for(const row of measured)assert.deepEqual(Object.keys(row).sort(),['id','apiProvider','model','inputTokens','cacheReadTokens','cacheWriteTokens','outputTokens','thinkingTokens'].sort());
 });
 
 test('message identity includes provider and missing request IDs use original generator indices',()=>{
@@ -182,4 +182,29 @@ test('safe summaries whitelist only aggregates, reject malformed counts and down
   assert.equal(safeTaskUsage({...value,state:'partial'}).complete,false);
   assert.equal(safeTaskUsage({...value,state:'unavailable'}).state,'partial');
   assert.equal(safeTaskUsage(null),null);assert.equal(safeTaskUsage([]),null);assert.equal(safeTaskUsage({}),null);
+});
+
+test('heterogeneous multi-agent rollup tracks thinking, vertex 3p, local/BYOM pools, roles, and rejects tampered pools',()=>{
+  const coordGen={chatModel:{model:'MODEL_PLACEHOLDER_M537',usage:{responseId:'c1',apiProvider:'API_PROVIDER_GOOGLE_GEMINI',inputTokens:400,cacheReadTokens:100,outputTokens:150,thinkingOutputTokens:50}}};
+  const vertexWorker={chatModel:{model:'MODEL_PLACEHOLDER_M405',usage:{responseId:'w1',apiProvider:'API_PROVIDER_ANTHROPIC_VERTEX',inputTokens:200,cacheReadTokens:50,outputTokens:80,thinkingOutputTokens:30}}};
+  const byomMonitor={chatModel:{model:'MODEL_GOOGLE_GEMINI_INTERNAL_BYOM',usage:{responseId:'m1',apiProvider:'API_PROVIDER_GOOGLE_GEMINI',inputTokens:10,outputTokens:10}}};
+  const sidecarChild={chatModel:{model:'gemini-4-hydrogen-orchestrator',usage:{responseId:'s1',apiProvider:'API_PROVIDER_GOOGLE_GEMINI',inputTokens:20,outputTokens:5}}};
+  const own=taskRecords({trajectory:{steps:[],generatorMetadata:[coordGen]}},parent);
+  const wRows=taskRecords({trajectory:{steps:[],generatorMetadata:[vertexWorker]}},child);
+  const mRows=taskRecords({trajectory:{steps:[],generatorMetadata:[byomMonitor]}},'33333333-3333-3333-3333-333333333333');
+  const sRows=taskRecords({trajectory:{steps:[],generatorMetadata:[sidecarChild]}},'44444444-4444-4444-4444-444444444444');
+  const res=aggregateTaskUsage(own,[{rows:wRows,role:'worker',label:'Worker (feat)'},{rows:mRows,role:'monitor',label:'Monitor'},{rows:sRows,role:'sidecar',label:'Sidecar'}],{subagents:3,loadedSubagents:3,state:'ready'});
+  assert.equal(res.thinkingTokens,80);
+  assert.equal(res.poolBreakdown.gemini.totalTokens,675);
+  assert.equal(res.poolBreakdown['3p'].totalTokens,330);
+  assert.equal(res.poolBreakdown.local.totalTokens,20);
+  assert.equal(res.roleBreakdown.coordinator.totalTokens,650);
+  assert.equal(res.roleBreakdown.worker.totalTokens,330);
+  assert.equal(res.roleBreakdown.monitor.totalTokens,20);
+  assert.equal(res.roleBreakdown.sidecar.totalTokens,25);
+  assert.equal(res.agents.length,4);
+  assert.deepEqual(safeTaskUsage(res),res);
+  // Tampered poolBreakdown totals must be rejected.
+  assert.equal(safeTaskUsage({...res,poolBreakdown:{...res.poolBreakdown,gemini:{...res.poolBreakdown.gemini,totalTokens:999}}}),null);
+  assert.equal(safeTaskUsage({...res,agents:[{...res.agents[0],label:parent}]}),null);
 });

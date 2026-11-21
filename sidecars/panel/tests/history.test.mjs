@@ -117,3 +117,21 @@ test('same coverage quality correction with fewer eligible samples replaces save
   const incomplete={...fresh,complete:false,tps:1};await history.save(a,id,incomplete);
   assert.equal((await history.load(a,id)).metrics.tps,40);
 });
+
+test('modelBreakdown, cacheMissSurges, toolSummary, and sessionMeta survive safeMetrics and SessionHistory',async t=>{
+  const {history}=await fixture(t),a=scope('b@example.test');
+  const m=trajectoryMetrics({trajectory:{cascadeId:id,
+    steps:[{type:'CORTEX_STEP_TYPE_GENERIC',metadata:{toolCall:{name:'run_command',argumentsJson:'{"cmd":"echo hi"}'},toolSource:'CORTEX_COMPONENT_SOURCE_BUILTIN'}}],
+    generatorMetadata:[
+      {chatModel:{model:'MODEL_PLACEHOLDER_M537',streamingDuration:'2s',usage:{responseId:'p1',inputTokens:'120000',cacheReadTokens:'0',outputTokens:'400',responseOutputTokens:'100',thinkingOutputTokens:'300',apiProvider:'API_PROVIDER_GOOGLE_GEMINI'}}},
+      {chatModel:{model:'MODEL_PLACEHOLDER_M669',streamingDuration:'1s',usage:{responseId:'e1',inputTokens:'2000',cacheReadTokens:'50000',outputTokens:'200',responseOutputTokens:'200',apiProvider:'API_PROVIDER_GOOGLE_GEMINI'}}},
+    ]}});
+  await history.save(a,id,{...m,sessionMeta:{agentRole:'sidecar',isSubagent:false,isSidecar:true}});
+  const loaded=(await history.load(a,id)).metrics;
+  assert.equal(loaded.modelBreakdown.length,2);
+  assert.equal(loaded.cacheMissSurges,1);
+  assert.equal(loaded.cacheMissSurgeTokens,120000);
+  assert.equal(loaded.toolSummary.tools[0].name,'run_command');
+  assert.equal(loaded.sessionMeta.agentRole,'sidecar');
+  assert.equal(loaded.sessionMeta.isSidecar,true);
+});

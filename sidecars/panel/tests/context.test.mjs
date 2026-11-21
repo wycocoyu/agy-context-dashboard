@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { contextMetrics, safeContext, formatModelName, modelContextReference, modelContextCapacity, modelCompressionLimit, usageModelKey } from '../context.mjs';
+import { contextMetrics, safeContext, formatModelName, modelContextReference, modelContextCapacity, modelCompressionLimit, quotaPoolForModel, usageModelKey } from '../context.mjs';
 import { trajectoryMetrics } from '../metrics.mjs';
 import { SessionHistory, safeMetrics } from '../history.mjs';
 import { MetricsStore } from '../store.mjs';
@@ -200,4 +200,40 @@ test('provider reference and unknown threshold survive numeric history round tri
  await history.save(scope,id,trajectoryMetrics(response));const restored=(await history.load(scope,id)).metrics.context;
  assert.equal(restored.usedFraction,.5);assert.equal(restored.maxTokens,256000);assert.equal(restored.providerMaxTokens,1048576);assert.equal(restored.compressionLimit,null);
  const saved=JSON.parse(await readFile(history.file(scope,id),'utf8'));assert.equal(saved.metrics.context.providerCapacitySource,'https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash');
+});
+test('2.34.0 Spec A catalog, Orchestrator Hydrogen 1M ref, Neon/Trial/2.5, and quota pools normalize cleanly',()=>{
+ for(const [raw,expected,refTokens,pool]of [
+  ['MODEL_PLACEHOLDER_M532','Gemini 4 Neon (High)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M535','Gemini 4 Neon (XHigh)',1048576,'gemini'],
+  ['gemini-4-neon-medium','Gemini 4 Neon (Medium)',1048576,'gemini'],
+  ['gemini-4-neon-low','Gemini 4 Neon (Low)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M427','Gemini 4 Carbon (High)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M437','Gemini 4 Carbon (Medium)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M438','Gemini 4 Carbon (Low)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M417','Gemini 4 Argon (High)',1048576,'gemini'],
+  ['gemini-4-argon-trial','Gemini 4 Argon (Trial)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M525','Gemini 4 Hydrogen (High)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M528','Gemini 4 Hydrogen (XHigh)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M669','Gemini 4 Hydrogen (Orchestrator)',1048576,'gemini'],
+  ['gemini-flash-worker-agy','Gemini 4 Hydrogen (Orchestrator)',1048576,'gemini'],
+  ['Gemini 4 Hydrogen (Orchestrator)','Gemini 4 Hydrogen (Orchestrator)',1048576,'gemini'],
+  ['MODEL_PLACEHOLDER_M537','Orchestrator (Neon)',null,'gemini'],
+  ['gemini-pro-orchestrator-neon','Orchestrator (Neon)',null,'gemini'],
+  ['MODEL_PLACEHOLDER_M667','Orchestrator (Carbon)',null,'gemini'],
+  ['gemini-pro-orchestrator','Orchestrator (Carbon)',null,'gemini'],
+  ['MODEL_PLACEHOLDER_M681','Orchestrator (Argon)',null,'gemini'],
+  ['gemini-pro-orchestrator-argon','Orchestrator (Argon)',null,'gemini'],
+  ['MODEL_PLACEHOLDER_M18','Gemini 2.5 Pro',null,'gemini'],
+  ['MODEL_PLACEHOLDER_M50','Gemini 2.5 Flash',null,'gemini'],
+  ['MODEL_PLACEHOLDER_M405','Claude Sonnet 5.5 (High)',null,'3p'],
+  ['claude-sonnet-5-5-high','Claude Sonnet 5.5 (High)',null,'3p'],
+  ['MODEL_GOOGLE_GEMINI_INTERNAL_BYOM','Gemini (Internal BYOM)',null,'local'],
+  ['ollama/qwen3-coder','ollama/qwen3-coder',null,'local'],
+ ]){
+  assert.equal(formatModelName(raw),expected,raw);
+  assert.equal(modelContextCapacity(raw),refTokens,raw);
+  assert.equal(quotaPoolForModel(raw),pool,raw);
+ }
+ assert.equal(modelContextReference('MODEL_PLACEHOLDER_M405')?.label,'1M');
+ assert.equal(quotaPoolForModel('MODEL_PLACEHOLDER_M999','API_PROVIDER_ANTHROPIC_VERTEX'),'3p');
 });

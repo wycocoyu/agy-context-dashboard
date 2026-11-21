@@ -3,31 +3,60 @@
 import {setImmediate as yieldLoop} from 'node:timers/promises';
 import {delegatedIds,normalizeConversationId} from './delegation.mjs';
 import {taskRecords,mergeTaskRecords,aggregateTaskUsage,safeTaskUsage} from './task-usage.mjs';
+import {readSwarmMembers,agentDescriptor} from './swarm.mjs';
 
 export class DelegatedUsage {
   constructor(client,{onSource=async()=>{},onUpdate=async()=>{},owns=()=>true,now=Date.now,
-    budgetBytes=8*1024*1024,maxAgents=128,maxEntries=4,refreshMs=5000}={}) {
+    budgetBytes=8*1024*1024,maxAgents=128,maxEntries=4,refreshMs=5000,brainRoot=null}={}) {
     Object.assign(this,{client,onSource,onUpdate,owns,now,budgetBytes,maxAgents,maxEntries,refreshMs});
+    this.brainRoot=typeof brainRoot==='string'&&brainRoot?brainRoot:null;
     // A Promise is truthy but is never proof of ownership. Callers must supply
     // the synchronous cached predicate, not the asynchronous marker verifier.
     this.owns=()=>owns()===true;
   }
-  tasks=new Map();epoch=0;scope=null;running=null;bytes=0;disposed=false;
-  reset(){this.epoch++;this.tasks.clear();this.bytes=0;this.scope=null;}
+  tasks=new Map();swarmNegative=new Map();swarmProbes=new Map();epoch=0;scope=null;running=null;bytes=0;disposed=false;
+  reset(){this.epoch++;this.tasks.clear();this.swarmNegative.clear();this.swarmProbes.clear();this.bytes=0;this.scope=null;}
   dispose(){this.disposed=true;this.reset();}
-  links(id,raw){return delegatedIds(id,raw,this.client.reader?.summaries||{});}
-  request(scope,id,raw,{saved=null,knownIds=[],force=false,isCurrent=()=>true}={}) {
+  links(id,raw,swarmMembers=null){return delegatedIds(id,raw,this.client.reader?.summaries||{},swarmMembers);}
+  probeSwarm(scope,id,raw,saved,isCurrent){
+    if(!this.brainRoot||this.swarmProbes.has(id))return;
+    const negAt=this.swarmNegative.get(id);
+    if(negAt!==undefined&&this.now()-negAt<15000)return;
+    const epoch=this.epoch;
+    const job=(async()=>{
+      try{
+        const summaries=this.client.reader?.summaries||{};
+        const rootSum=summaries[id]||Object.entries(summaries).find(([k])=>k.toLowerCase()===id)?.[1];
+        const rootId=normalizeConversationId(rootSum?.trajectoryMetadata?.rootConversationId)||
+          normalizeConversationId(rootSum?.trajectoryMetadata?.sourceMetadata?.rootConversationId)||id;
+        let swarm=await readSwarmMembers(this.brainRoot,rootId);
+        if(!swarm&&rootId!==id)swarm=await readSwarmMembers(this.brainRoot,id);
+        if(this.disposed||!this.owns()||epoch!==this.epoch||scope!==this.scope||isCurrent()!==true)return;
+        const valid=swarm&&(swarm.swarmId===id||swarm.byId.has(id))?swarm:null;
+        if(!valid||!valid.ids.some(cid=>cid!==id)){
+          this.swarmNegative.set(id,this.now());
+          while(this.swarmNegative.size>64)this.swarmNegative.delete(this.swarmNegative.keys().next().value);
+          return;
+        }
+        const refreshed=this.request(scope,id,raw,{saved,knownIds:valid.ids,force:false,isCurrent,swarmMembers:valid});
+        if(refreshed)await this.onUpdate(scope,id,refreshed,valid.ids.filter(cid=>cid!==id));
+      }catch{}finally{if(this.swarmProbes.get(id)===job)this.swarmProbes.delete(id);}
+    })();
+    this.swarmProbes.set(id,job);
+  }
+  request(scope,id,raw,{saved=null,knownIds=[],force=false,isCurrent=()=>true,swarmMembers=null}={}) {
     if(this.disposed||!scope||!this.owns())return safeTaskUsage(saved);
     id=normalizeConversationId(id);if(!id)return null;
     if(scope!==this.scope){this.reset();this.scope=scope;}
-    const ids=[...new Set([...this.links(id,raw),...knownIds.map(normalizeConversationId).filter(Boolean)])].filter(child=>child!==id);
     let task=this.tasks.get(id);
-    if(!ids.length&&!task)return safeTaskUsage(saved);
+    const activeSwarm=swarmMembers||task?.swarmMembers||null;
+    const ids=[...new Set([...this.links(id,raw,activeSwarm),...knownIds.map(normalizeConversationId).filter(Boolean)])].filter(child=>child!==id);
+    if(!ids.length&&!task){this.probeSwarm(scope,id,raw,saved,isCurrent);return safeTaskUsage(saved);}
     if(!task){
       while(this.tasks.size>=this.maxEntries){const oldest=this.tasks.keys().next().value;this.bytes-=this.tasks.get(oldest).bytes;this.tasks.delete(oldest);}
-      task={id,scope,children:new Set(),sources:new Map(),failures:new Map(),staleSources:new Set(),attempted:new Map(),order:0,bytes:0,lastAt:-Infinity,requested:false,force:false,result:safeTaskUsage(saved),truncated:false};
+      task={id,scope,children:new Set(),sources:new Map(),failures:new Map(),staleSources:new Set(),attempted:new Map(),order:0,bytes:0,lastAt:-Infinity,requested:false,force:false,result:safeTaskUsage(saved),truncated:false,swarmMembers:activeSwarm};
       this.tasks.set(id,task);
-    }
+    }else if(swarmMembers)task.swarmMembers=swarmMembers;
     this.tasks.delete(id);this.tasks.set(id,task);
     task.isCurrent=isCurrent;
     const oldSize=task.children.size;
@@ -59,9 +88,16 @@ export class DelegatedUsage {
     this.bytes+=size-old;task.bytes+=size-old;task.sources.set(id,{rows,bytes:size});return true;
   }
   result(task,state){
-    const childRows=[...task.children].filter(id=>task.sources.has(id)).map(id=>task.sources.get(id).rows);
-    const result=aggregateTaskUsage(task.sources.get(task.id)?.rows||[],childRows,{
-      subagents:task.children.size,loadedSubagents:childRows.length,state:task.truncated||task.staleSources.size?'partial':state,
+    const summaries=this.client.reader?.summaries||{};
+    const rootDesc=agentDescriptor(task.id,{isRoot:true,summaries,swarmMembers:task.swarmMembers});
+    const childSets=[...task.children].filter(id=>task.sources.has(id)).map((id,idx)=>{
+      const desc=agentDescriptor(id,{isRoot:false,summaries,swarmMembers:task.swarmMembers});
+      const label=desc.label==='Worker'?`Worker #${idx+1}`:desc.label;
+      return {rows:task.sources.get(id).rows,role:desc.role,label,modelHint:desc.modelHint};
+    });
+    const result=aggregateTaskUsage(task.sources.get(task.id)?.rows||[],childSets,{
+      subagents:task.children.size,loadedSubagents:childSets.length,state:task.truncated||task.staleSources.size?'partial':state,
+      rootRole:rootDesc.role,rootLabel:rootDesc.label,rootModelHint:rootDesc.modelHint,
     });
     // On restart, numeric saved task totals remain visible until the first pass
     // can account for every known child. They are never treated as fresh/complete.
@@ -84,6 +120,19 @@ export class DelegatedUsage {
   async collect(task,force,current){
     const deadline=this.now()+30000;let failed=false;
     try{
+      if(this.brainRoot){
+        const summaries=this.client.reader?.summaries||{};
+        const rootSum=summaries[task.id]||Object.entries(summaries).find(([k])=>k.toLowerCase()===task.id)?.[1];
+        const swarmRootId=normalizeConversationId(rootSum?.trajectoryMetadata?.rootConversationId)||
+          normalizeConversationId(rootSum?.trajectoryMetadata?.sourceMetadata?.rootConversationId)||task.id;
+        let swarm=await readSwarmMembers(this.brainRoot,swarmRootId);
+        if(!swarm&&swarmRootId!==task.id)swarm=await readSwarmMembers(this.brainRoot,task.id);
+        if(!current())return;
+        if(swarm&&(swarm.swarmId===task.id||swarm.byId.has(task.id))){
+          task.swarmMembers=swarm;
+          this.addChildren(task,swarm.ids);
+        }
+      }
       // Resume oldest/unread sources first after a bounded pass. Starting from
       // the same first child every time can starve late children in a large task.
       const queue=[...task.children].sort((a,b)=>(task.attempted.get(a)||0)-(task.attempted.get(b)||0)),queued=new Set(queue);
@@ -118,5 +167,5 @@ export class DelegatedUsage {
       await this.onUpdate(task.scope,task.id,task.result,[...task.children]);
     }catch{if(current()){task.lastAt=this.now();task.result=this.result(task,'partial');}}
   }
-  async idle(){while(this.running)await this.running;}
+  async idle(){while(this.running||this.swarmProbes.size){if(this.swarmProbes.size)await Promise.allSettled([...this.swarmProbes.values()]);if(this.running)await this.running;}}
 }

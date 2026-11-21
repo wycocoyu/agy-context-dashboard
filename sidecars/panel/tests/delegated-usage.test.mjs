@@ -305,3 +305,37 @@ test('individual source ingestion and opening a child never double the account u
  const rootFile=JSON.parse(await readFile(ledger.file(account,parent),'utf8')),childFile=JSON.parse(await readFile(ledger.file(account,child),'utf8'));
  assert.equal(rootFile.records.length,1);assert.equal(childFile.records.length,2);assert.equal((await ledger.summary(secondAccount)).totalTokens,0);
 });
+
+test('swarm members.json discovery collects heterogeneous worker and monitor usage under brainRoot',{timeout:30000},async t=>{
+ const {mkdir,writeFile}=await import('node:fs/promises');
+ const directory=await temporary(t),brainRoot=join(directory,'brain'),history=new SessionHistory(join(directory,'history'));
+ const mon='33333333-3333-3333-3333-333333333333';
+ await mkdir(join(brainRoot,parent,'.system_generated','swarm'),{recursive:true});
+ await writeFile(join(brainRoot,parent,'.system_generated','swarm','members.json'),JSON.stringify({
+  title:'PRIVATE SWARM',members:{
+   coordinator:{conversation_id:parent,role:'coordinator',model:'MODEL_PLACEHOLDER_M537'},
+   'claude-worker':{conversation_id:child,role:'worker',model:'MODEL_PLACEHOLDER_M405'},
+   'swarm-monitor':{conversation_id:mon,role:'worker',model:'MODEL_PLACEHOLDER_M318'},
+  }
+ }));
+ const rootRaw={trajectory:{cascadeId:parent,steps:[],generatorMetadata:[{chatModel:{model:'MODEL_PLACEHOLDER_M537',usage:{responseId:'r0',apiProvider:'API_PROVIDER_GOOGLE_GEMINI',inputTokens:100,outputTokens:50,thinkingOutputTokens:20}}}]}};
+ const childRaw={trajectory:{cascadeId:child,steps:[],generatorMetadata:[{chatModel:{model:'MODEL_PLACEHOLDER_M405',usage:{responseId:'c0',apiProvider:'API_PROVIDER_ANTHROPIC_VERTEX',inputTokens:200,outputTokens:100,thinkingOutputTokens:40}}}]}};
+ const monRaw={trajectory:{cascadeId:mon,steps:[],generatorMetadata:[{chatModel:{model:'MODEL_PLACEHOLDER_M318',usage:{responseId:'m0',apiProvider:'API_PROVIDER_GOOGLE_GEMINI',inputTokens:30,outputTokens:10}}}]}};
+ const {MetricsStore}=await import('../store.mjs');
+ const {TranscriptReader}=await import('../transcript.mjs');
+ const map=new Map([[parent,rootRaw],[child,childRaw],[mon,monRaw]]);
+ const client={discover:async()=>({pid:1}),call:async()=>({}),trajectory:async id=>map.get(id),reader:{summaries:{}}};
+ const store=new MetricsStore(client,{history,transcripts:new TranscriptReader({root:brainRoot})});
+ await store.snapshot({conversationId:parent});await store.delegated.idle();
+ const saved=store.sessions.get(parent).data;
+ assert.equal(saved.taskUsage.subagents,2);
+ assert.equal(saved.taskUsage.loadedSubagents,2);
+ assert.equal(saved.taskUsage.thinkingTokens,60);
+ assert.equal(saved.taskUsage.poolBreakdown.gemini.totalTokens,190);
+ assert.equal(saved.taskUsage.poolBreakdown['3p'].totalTokens,300);
+ assert.equal(saved.taskUsage.roleBreakdown.coordinator.totalTokens,150);
+ assert.equal(saved.taskUsage.roleBreakdown.worker.totalTokens,300);
+ assert.equal(saved.taskUsage.roleBreakdown.monitor.totalTokens,40);
+ assert.equal(JSON.stringify(saved.taskUsage).includes('PRIVATE'),false);
+ store.dispose();
+});

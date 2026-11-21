@@ -25,6 +25,7 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     .chart-controls{display:flex;gap:10px;align-items:center}.range{display:flex;align-items:center;gap:10px}.range button{height:26px;width:26px;border:0}.range strong{font-size:12px;font-weight:500;min-width:106px;text-align:center}.legend{display:flex;flex-wrap:wrap;gap:3px 12px;margin:0 0 10px;max-height:46px;overflow-y:auto;padding-right:4px}.legend button{display:flex;align-items:center;gap:5px;padding:2px 0;border:0;border-radius:3px;background:transparent;font-size:11px;line-height:1.35;color:var(--pulse-muted)}.legend button:hover,.legend button[aria-pressed=true]{color:var(--pulse-foreground)}.legend button[aria-pressed=false]{opacity:.35;text-decoration:line-through}
     .chart-wrap{overflow-x:auto;border-bottom:1px solid var(--pulse-separator);padding:9px 0 8px;margin-bottom:10px}.chart{height:168px;display:flex;gap:16px;min-width:650px}.axis{width:42px;flex:none;position:relative;font-size:11px;color:var(--pulse-muted)}.axis span{position:absolute;right:0;transform:translateY(50%)}.plot{position:relative;flex:1;display:flex;align-items:stretch;gap:5px;padding:0 1px}.grid-line{position:absolute;left:0;right:0;border-top:1px solid var(--pulse-separator);opacity:.45;pointer-events:none}.grid-line:first-child{opacity:.85}.bar-column{position:relative;flex:1;min-width:0;display:flex;align-items:flex-end;border:0;border-radius:4px;background:transparent;padding:0;margin-bottom:18px}.bar-column:hover{background:transparent}.bar-column:active{transform:none}.stack{display:flex;flex-direction:column-reverse;width:62%;max-width:30px;margin-inline:auto;gap:0;pointer-events:none;border-radius:4px 4px 0 0;overflow:hidden}.bar-segment{display:block;flex:none;width:100%;min-height:0;border-radius:0;pointer-events:auto;background:var(--model-color);transition:opacity 140ms ease}.plot[data-highlight] .bar-segment:not([data-highlight=true]){opacity:.24}.x-label{position:absolute;top:calc(100% + 5px);left:50%;transform:translateX(-50%);font-size:11px;color:var(--pulse-muted);white-space:nowrap}.empty-bar{height:1px;width:100%;background:var(--pulse-track);border-radius:2px;opacity:.35}.chart-empty{position:absolute;left:0;right:0;top:40%;text-align:center;color:var(--pulse-muted);font-size:12px;pointer-events:none}.chart-summary{font-size:11px;color:var(--pulse-muted);margin:0}.chart-summary strong{color:var(--pulse-foreground);font-weight:500}
     .table-wrap{overflow:visible}.table{width:100%;border-collapse:collapse;text-align:right;font-size:11px;white-space:nowrap}.table th{font-weight:500;color:var(--pulse-muted);padding:6px 10px;border-bottom:0;position:sticky;top:0;z-index:2;background:var(--pulse-background);box-shadow:inset 0 -1px 0 var(--pulse-separator)}.table td{padding:7px 10px;border-bottom:1px solid var(--pulse-separator)}.table td:nth-child(2){font-weight:550}.table tbody tr:hover td{background:color-mix(in srgb,var(--pulse-hover) 55%,transparent)}.table th:first-child,.table td:first-child{text-align:left;padding-left:0}.table td:first-child span{margin-right:7px}.table tr:last-child td{border-bottom:0}
+    .pool-strip{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.pool-strip[hidden]{display:none}.pool-pill{flex:1 1 150px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--pulse-separator);border-radius:8px;background:color-mix(in srgb,var(--pulse-hover) 40%,transparent);font-size:11px}.pool-pill-name{font-weight:550;color:var(--pulse-label)}.pool-pill-val{font-variant-numeric:tabular-nums;color:var(--pulse-foreground);font-weight:600}.pool-pill-meta{margin-left:5px;color:var(--pulse-muted);font-weight:400}
     .footer{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:auto;padding-top:14px;font-size:11px;color:var(--pulse-muted)}.alert{color:var(--pulse-warning);margin-top:12px;font-size:11px}.tip{position:fixed;z-index:20;max-width:280px;padding:12px 14px;border:1px solid var(--pulse-border);border-radius:9px;background:var(--pulse-menu);box-shadow:0 8px 30px var(--pulse-shadow);color:var(--pulse-foreground);font-size:11px;pointer-events:none}.tip[hidden]{display:none}.tip .tip-title{font-size:11px;color:var(--pulse-muted);margin-bottom:5px}.tip strong{font-size:16px;font-weight:550}.tip-model{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:5px;padding:3px 0}.tip-model.dimmed{opacity:.5}.tip-model.active{font-weight:600}.tip-model .dot{margin-right:6px}.model-share{font-size:11px;color:var(--pulse-muted);margin-left:9px}.usage-waiting{display:grid;place-items:center;min-height:260px;color:var(--pulse-muted);font-size:12px}.usage-waiting[hidden]{display:none}
     .year-picker{position:relative;flex:none}.year-trigger{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:76px;height:30px;padding:0 10px;background:var(--pulse-control);color:var(--pulse-foreground);font-size:11px;border-radius:8px}.year-trigger:hover,.year-trigger[aria-expanded=true]{background:var(--pulse-hover)}.year-chevron{width:12px;height:12px;fill:none;stroke:var(--pulse-muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform 160ms cubic-bezier(.23,1,.32,1)}.year-trigger[aria-expanded=true] .year-chevron{transform:rotate(180deg)}
     .year-menu{position:fixed;inset:auto;margin:0;padding:5px;width:112px;max-height:232px;overflow-y:auto;border:1px solid var(--pulse-border);border-radius:10px;background:var(--pulse-menu);color:var(--pulse-foreground);box-shadow:0 8px 26px var(--pulse-shadow);transform-origin:top right;opacity:1;transform:scale(1);transition:opacity 140ms ease,transform 160ms cubic-bezier(.23,1,.32,1)}.year-menu::backdrop{background:transparent;pointer-events:none}.year-option{width:100%;border:0;border-radius:6px;padding:7px 9px;display:flex;align-items:center;justify-content:space-between;gap:18px;font-size:12px;text-align:left;background:transparent;color:var(--pulse-foreground);font-variant-numeric:tabular-nums}.year-option:hover,.year-option:focus-visible{background:var(--pulse-hover)}.year-option[aria-selected=true]{background:color-mix(in srgb,var(--pulse-accent) 12%,var(--pulse-menu))}.year-check{color:var(--pulse-accent);width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;opacity:0}.year-option[aria-selected=true] .year-check{opacity:1}
@@ -38,7 +39,7 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     @media(prefers-reduced-motion:reduce){button,.year-menu,.year-chevron,.scope-thumb,.totals,#overview,#details{transition:none}button:active{transform:none}}
   `;view.append(css);
   const page=document.createElement('div');page.className='page';
-  setMarkup(page,`<div class="page-head"><header class="top"><div><h1 id="title"></h1><div class="sub"><span class="live-dot"></span><span id="subtitle"></span></div></div><div class="actions"><button id="locale" type="button" aria-label="Language"><span id="locale-label" class="locale-label">中</span></button><button id="refresh" type="button" aria-label="Refresh"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 7a5 5 0 1 0-1.3 4.4M13 3v4H9"/></svg></button><button id="close" type="button" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div></header><div class="tabs-bar"><nav class="tabs" role="tablist"><button id="overview-tab" role="tab" aria-controls="overview"></button><button id="details-tab" role="tab" aria-controls="details"></button></nav><div class="seg scope-seg" id="scope-controls" role="group" hidden><i class="scope-thumb" aria-hidden="true"></i><button type="button" data-usage-scope="local"></button><button type="button" data-usage-scope="account"></button></div></div></div><div class="page-body" id="page-body"><div class="totals" id="totals"></div><section id="usage-waiting" class="usage-waiting" role="status" hidden></section><section id="overview" role="tabpanel"><div class="section-head"><div><h2 id="activity-title"></h2><div class="muted" id="heat-sub"></div></div><div class="chart-controls"><div class="seg" id="heat-controls"><button data-heat="day"></button><button data-heat="week"></button></div><div class="year-picker"><button id="year" type="button" class="year-trigger" aria-label="Year" aria-haspopup="listbox" aria-controls="year-menu" aria-expanded="false"><span id="year-label"></span><svg class="year-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div id="year-menu" class="year-menu" role="listbox" aria-label="Year" popover="manual"></div></div></div></div><div class="heat-wrap"><div class="calendar"><div class="months" id="months"></div><div class="heat-row"><div class="weekdays" id="weekdays"></div><div class="heat" id="heat"></div></div></div></div><div class="heat-footer"><span id="heat-summary"></span><div class="scale"><span id="less"></span><i class="swatch"></i><i class="swatch" data-level="1"></i><i class="swatch" data-level="2"></i><i class="swatch" data-level="3"></i><i class="swatch" data-level="4"></i><span id="more"></span></div></div><div class="selected"><div><div class="title" id="selection-title"></div><span class="muted" id="selection-value"></span></div><button id="selection-details"></button></div></section><section id="details" role="tabpanel" hidden><div class="section-head"><h2 id="detail-title"></h2><div class="chart-controls"><div class="range"><button id="previous" aria-label="Previous">‹</button><strong id="range-label"></strong><button id="next" aria-label="Next">›</button></div><div class="seg" id="period-controls"><button data-period="day"></button><button data-period="week"></button><button data-period="month"></button></div></div></div><div class="legend" id="legend"></div><div class="chart-wrap"><div class="chart"><div class="axis" id="axis"></div><div class="plot" id="plot"></div></div></div><div class="table-wrap"><table class="table"><thead><tr id="table-head"></tr></thead><tbody id="table-body"></tbody></table></div></section><div class="alert" id="alert" hidden></div><footer class="footer"><span id="coverage"></span><span id="timezone"></span></footer></div><div class="tip" id="tip" role="status" hidden></div>`);view.append(page);
+  setMarkup(page,`<div class="page-head"><header class="top"><div><h1 id="title"></h1><div class="sub"><span class="live-dot"></span><span id="subtitle"></span></div></div><div class="actions"><button id="locale" type="button" aria-label="Language"><span id="locale-label" class="locale-label">中</span></button><button id="refresh" type="button" aria-label="Refresh"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 7a5 5 0 1 0-1.3 4.4M13 3v4H9"/></svg></button><button id="close" type="button" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div></header><div class="tabs-bar"><nav class="tabs" role="tablist"><button id="overview-tab" role="tab" aria-controls="overview"></button><button id="details-tab" role="tab" aria-controls="details"></button></nav><div class="seg scope-seg" id="scope-controls" role="group" hidden><i class="scope-thumb" aria-hidden="true"></i><button type="button" data-usage-scope="local"></button><button type="button" data-usage-scope="account"></button></div></div></div><div class="page-body" id="page-body"><div class="totals" id="totals"></div><section id="usage-waiting" class="usage-waiting" role="status" hidden></section><section id="overview" role="tabpanel"><div class="section-head"><div><h2 id="activity-title"></h2><div class="muted" id="heat-sub"></div></div><div class="chart-controls"><div class="seg" id="heat-controls"><button data-heat="day"></button><button data-heat="week"></button></div><div class="year-picker"><button id="year" type="button" class="year-trigger" aria-label="Year" aria-haspopup="listbox" aria-controls="year-menu" aria-expanded="false"><span id="year-label"></span><svg class="year-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div id="year-menu" class="year-menu" role="listbox" aria-label="Year" popover="manual"></div></div></div></div><div class="heat-wrap"><div class="calendar"><div class="months" id="months"></div><div class="heat-row"><div class="weekdays" id="weekdays"></div><div class="heat" id="heat"></div></div></div></div><div class="heat-footer"><span id="heat-summary"></span><div class="scale"><span id="less"></span><i class="swatch"></i><i class="swatch" data-level="1"></i><i class="swatch" data-level="2"></i><i class="swatch" data-level="3"></i><i class="swatch" data-level="4"></i><span id="more"></span></div></div><div class="selected"><div><div class="title" id="selection-title"></div><span class="muted" id="selection-value"></span></div><button id="selection-details"></button></div></section><section id="details" role="tabpanel" hidden><div class="section-head"><h2 id="detail-title"></h2><div class="chart-controls"><div class="range"><button id="previous" aria-label="Previous">‹</button><strong id="range-label"></strong><button id="next" aria-label="Next">›</button></div><div class="seg" id="period-controls"><button data-period="day"></button><button data-period="week"></button><button data-period="month"></button></div></div></div><div class="legend" id="legend"></div><div class="chart-wrap"><div class="chart"><div class="axis" id="axis"></div><div class="plot" id="plot"></div></div></div><div class="pool-strip" id="pool-strip" hidden></div><div class="table-wrap"><table class="table"><thead><tr id="table-head"></tr></thead><tbody id="table-body"></tbody></table></div></section><div class="alert" id="alert" hidden></div><footer class="footer"><span id="coverage"></span><span id="timezone"></span></footer></div><div class="tip" id="tip" role="status" hidden></div>`);view.append(page);
   const intro=document.createElement('section');intro.id='usage-intro';intro.className='usage-intro';intro.hidden=true;intro.setAttribute('aria-labelledby','usage-intro-title');
   setMarkup(intro,'<div class="intro-heading"><span class="intro-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 2 10 2 10 0V4M3 8c0 2 10 2 10 0"/></svg></span><h2 id="usage-intro-title"></h2></div><div class="intro-copy"><p id="usage-intro-history"></p><p id="usage-intro-scope"></p><p id="usage-intro-storage"></p></div><div class="intro-bottom"><span id="usage-intro-error" role="status"></span><button id="usage-intro-done" type="button"></button></div>');
   page.querySelector('#totals').before(intro);
@@ -87,13 +88,40 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     ['model_placeholder_m318','Gemini 3.8 Flash (High)'],
     ['model_placeholder_m319','Gemini 3.8 Flash (Medium)'],
     ['model_placeholder_m320','Gemini 3.8 Flash (Low)'],
+    ['model_placeholder_m532','Gemini 4 Neon (High)'],
+    ['model_placeholder_m533','Gemini 4 Neon (Medium)'],
+    ['model_placeholder_m534','Gemini 4 Neon (Low)'],
+    ['model_placeholder_m535','Gemini 4 Neon (XHigh)'],
+    ['model_placeholder_m427','Gemini 4 Carbon (High)'],
+    ['model_placeholder_m437','Gemini 4 Carbon (Medium)'],
+    ['model_placeholder_m438','Gemini 4 Carbon (Low)'],
+    ['model_placeholder_m417','Gemini 4 Argon (High)'],
+    ['model_placeholder_m418','Gemini 4 Argon (Medium)'],
+    ['model_placeholder_m419','Gemini 4 Argon (Low)'],
+    ['model_placeholder_m525','Gemini 4 Hydrogen (High)'],
+    ['model_placeholder_m526','Gemini 4 Hydrogen (Medium)'],
+    ['model_placeholder_m527','Gemini 4 Hydrogen (Low)'],
+    ['model_placeholder_m528','Gemini 4 Hydrogen (XHigh)'],
+    ['model_placeholder_m537','Orchestrator (Neon)'],
+    ['gemini-pro-orchestrator-neon','Orchestrator (Neon)'],
+    ['model_placeholder_m667','Orchestrator (Carbon)'],
+    ['gemini-pro-orchestrator','Orchestrator (Carbon)'],
+    ['model_placeholder_m681','Orchestrator (Argon)'],
+    ['gemini-pro-orchestrator-argon','Orchestrator (Argon)'],
+    ['model_placeholder_m669','Gemini 4 Hydrogen (Orchestrator)'],
+    ['gemini-flash-worker-agy','Gemini 4 Hydrogen (Orchestrator)'],
+    ['model_placeholder_m18','Gemini 2.5 Pro'],
+    ['model_placeholder_m148','Gemini 2.5 Pro'],
+    ['model_placeholder_m50','Gemini 2.5 Flash'],
+    ['model_placeholder_m198','Gemini 2.5 Flash'],
     ['model_placeholder_m35','Claude Sonnet 4.6 (Thinking)'],
     ['model_placeholder_m26','Claude Opus 4.6 (Thinking)'],
+    ['model_placeholder_m405','Claude Sonnet 5.5 (High)'],
     ['model_openai_gpt_oss_120b_medium','GPT-OSS 120B (Medium)'],
     ['model_google_gemini_internal_byom','Gemini (Internal BYOM)'],
     ['gemini-pro-orchestrator-g1-pro','Orchestrator (Argon)'],
   ]);
-  const EFFORT='n|xhigh|extra-high|extrahigh|extra|high|medium|low|max|thinking';
+  const EFFORT='n|xhigh|extra-high|extrahigh|extra|high|medium|low|max|thinking|orchestrator';
   const capWord=s=>s[0].toUpperCase()+s.slice(1);
   const effortLabel=effort=>{if(!effort||effort==='n')return '';const v=effort.toLowerCase();return v==='xhigh'||v==='extra'||v==='extra-high'||v==='extrahigh'?' (XHigh)':` (${capWord(v)})`;};
   const perplexityName=slug=>{
@@ -116,10 +144,12 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     const norm=candidate.toLowerCase().replace(/@(?:default|\d{8})(?=$|[-_\s()])/g,'').replace(/(\d)[._-](\d)/g,'$1.$2').replace(/[\s()_]+/g,'-').replace(/-+$/,'');
     let m=norm.match(/^gemini-3\.8-flash(?:-(n|high|medium|low|tiered))?$/);
     if(m)return 'Gemini 3.8 Flash'+effortLabel(m[1]);
-    m=norm.match(new RegExp(`^gemini-4-(hydrogen|argon|carbon)(?:-(${EFFORT}))?$`));
-    if(m)return `Gemini 4 ${capWord(m[1])}`+effortLabel(m[2]);
-    m=norm.match(new RegExp(`^orchestrator-argon(?:-(${EFFORT}))?$`));
-    if(m)return 'Orchestrator (Argon)'+effortLabel(m[1]);
+    m=norm.match(/^gemini-2\.5-(pro|flash)(?:-(n|high|medium|low))?$/);
+    if(m)return `Gemini 2.5 ${capWord(m[1])}`+effortLabel(m[2]);
+    m=norm.match(new RegExp(`^gemini-4-(hydrogen|argon|carbon|neon)(?:-(trial))?(?:-(${EFFORT}))?(?:-(trial))?$`));
+    if(m){const trial=m[2]||m[4]?' (Trial)':'';return `Gemini 4 ${capWord(m[1])}`+effortLabel(m[3])+trial;}
+    m=norm.match(new RegExp(`^orchestrator-(argon|carbon|neon)(?:-(${EFFORT}))?$`));
+    if(m)return `Orchestrator (${capWord(m[1])})`+effortLabel(m[2]);
     m=norm.match(new RegExp(`^claude-(sonnet|opus|haiku)-(4\\.5|4\\.6|4\\.7|4\\.8|5\\.5)(?:-\\d{8})?(?:-(${EFFORT}))?(?:-\\d{8})?$`));
     if(m)return `Claude ${capWord(m[1])} ${m[2]}`+effortLabel(m[3]);
     m=norm.match(new RegExp(`^model-claude-(4\\.5|4\\.6|4\\.7|4\\.8|5\\.5)-(sonnet|opus|haiku)(?:-\\d{8})?(?:-(${EFFORT}))?$`));
@@ -135,6 +165,13 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     if(aliased)return aliased;
     if(/^(?:gemini|claude|gpt)-/i.test(candidate))return candidate.replace(/-n$/,'').replace(/^gemini-/i,'Gemini ').replace(/^claude-/i,'Claude ').replace(/^gpt-/i,'GPT ').replace(/-/g,' ');
     return name;
+  };
+  const modelPool=raw=>{
+    const s=String(raw||'')+' '+modelName(String(raw||''));
+    if(/(?:^|[^a-z0-9])(?:local|byok|byom|ollama|lm[-_]?studio|vllm|llama[-_.]?cpp|llamacpp)(?:$|[^a-z0-9])/i.test(s))return 'local';
+    if(/claude|sonnet|opus|haiku|anthropic|gpt|openai|perplexity|fable/i.test(s)||/(?:^|[^a-z0-9])o[134](?:$|[^a-z0-9])/i.test(s)||/^3p(?:$|[-_])/i.test(String(raw||'')))return '3p';
+    if(/gemini|hydrogen|carbon|argon|neon|orchestrator/i.test(s))return 'gemini';
+    return 'other';
   };
   function normalizeUsageData(data){
     if(!data||!Array.isArray(data.days))return data;
@@ -276,6 +313,21 @@ module.exports = function createUsageDashboard({root,language,setMarkup,hostLabe
     $('table-head').replaceChildren(...[w('模型','Model','模型'),w('总 Token','Total tokens','總 Token'),w('未缓存输入','Uncached input','未快取輸入'),w('缓存读取','Cache read','快取讀取'),w('缓存写入','Cache write','快取寫入'),w('输出','Output','輸出')].map(label=>node('th','',label)));
     $('table-body').replaceChildren();const rangeTotals=totals(buckets[0].from,buckets.at(-1).to,true);
     chartSummary.replaceChildren(node('strong','',compact(rangeTotals.total)+' Token'),document.createTextNode(' · '+w(`${full(rangeTotals.requests)} 次请求`,`${full(rangeTotals.requests)} requests`,`${full(rangeTotals.requests)} 次請求`)));
+    const pools={gemini:{total:0,requests:0},'3p':{total:0,requests:0},local:{total:0,requests:0},other:{total:0,requests:0}};
+    for(const [model,r]of Object.entries(rangeTotals.models)){
+      const pk=modelPool(model);pools[pk].total+=r.total||0;pools[pk].requests+=r.requests||0;
+    }
+    const poolStrip=$('pool-strip');
+    if(poolStrip){
+      const poolNames={gemini:language.t('poolGemini'),'3p':language.t('pool3p'),local:language.t('poolLocal'),other:language.t('poolOther')};
+      const entries=Object.entries(pools).filter(([,v])=>v.total>0||v.requests>0);
+      poolStrip.hidden=!entries.length;
+      poolStrip.replaceChildren(...entries.map(([pk,v])=>{
+        const pill=node('div','pool-pill'),share=rangeTotals.total?` (${(v.total/rangeTotals.total*100).toFixed(0)}%)`:'';
+        const val=node('span','pool-pill-val',compact(v.total));val.append(node('span','pool-pill-meta',`${share} · ${full(v.requests)}`));
+        pill.append(node('span','pool-pill-name',poolNames[pk]||pk),val);return pill;
+      }));
+    }
     for(const [model,r]of Object.entries(rangeTotals.models).sort((a,b)=>b[1].total-a[1].total)){
       const row=node('tr',''),label=node('td',''),dot=node('span','dot');dot.style.setProperty('--model-color',color(model));label.append(dot,document.createTextNode(modelName(model)));row.append(label,...[r.total,r.uncached,r.cacheRead,r.cacheWrite,r.output].map(n=>node('td','',full(n))));row.addEventListener('pointerenter',()=>highlightModel(model));row.addEventListener('pointerleave',()=>highlightModel(null));$('table-body').append(row);
     }

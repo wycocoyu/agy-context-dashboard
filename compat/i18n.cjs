@@ -37,6 +37,11 @@ module.exports = function createDashboardI18n(initialLanguage) {
       usageScopeLocal:'All local',usageScopeAccount:'Current account',quotaWindowUsage:'Window tokens',quotaWindowFullRef:'~{full} full',quotaWindowBasis:'Recorded local tokens for this account in this quota window; estimated full capacity is a proportional reference only (weighting varies by model and cache).',
       quotaRingTitle:'Remaining quota',quotaRingUnknown:'Balance unknown',quotaDisplay:'Quota display',quotaDisplayBoth:'Two numbers',quotaDisplayAuto:'Auto',quotaDisplayCompact:'Dot',quotaDisplaySaveFailed:'Display setting could not be saved. Try again.',
       inlineReconnecting:'Inline widget is reconnecting automatically; statistics remain available in this panel.',panelInlineReconnecting:'Inline widget is reconnecting automatically; statistics remain available in this panel.',panelDebugPortReady:'Host started without remote debugging (launch shortcut configured); fully quit and reopen Antigravity for the inline bar. Statistics remain available here.',panelDebugPortManual:'Antigravity 2.33+ requires --remote-debugging-port=0 --remote-debugging-address=127.0.0.1 (or python3 manage.py launch) for the inline bar; statistics remain available here.',missingDebugPort:'Antigravity started without a debug port. Relaunch to restore the inline status bar.',relaunchDebugButton:'Relaunch with Debug Port',relaunchingDebug:'Relaunching Antigravity…',relaunchDebugFailed:'Could not relaunch automatically. Use the Antigravity (Debug) launcher.',relaunchDebugCooldown:'Relaunch already requested; waiting for Antigravity to restart.',relaunchDebugNotRunning:'Antigravity is not running right now.',autoRelaunchLabel:'Auto-relaunch when debug port is missing (e.g. after app update)',autoRelaunchSaveFailed:'Auto-relaunch setting could not be saved.',
+      poolGemini:'Gemini',pool3p:'Claude / 3p',poolLocal:'Local / BYOM',poolOther:'Other',poolRollup:'Quota pools',
+      multiAgentDetails:'Multi-agent & model breakdown',roleCoordinator:'Coordinator',roleWorker:'Worker',roleMonitor:'Monitor',roleSidecar:'Scheduled sidecar',
+      orchestrationOverhead:'Orchestration',workerExecution:'Workers',cacheMissSurge:'{n} cache-miss surge ({tokens})',
+      contextBreakdown:'Context & tool breakdown',breakdownUser:'User',breakdownReply:'Reply',breakdownThinking:'Thinking',breakdownTools:'Tool results',breakdownToolCalls:'Tool args',breakdownSystem:'System',
+      topTools:'Heavy tool calls',bloatBadge:'{n} bloat',bloatWarningLine:'{tool} #{step}: {tokens}',bloatHint:'Single payload >= 20K (critical >= 50K)',
     },
     'zh-CN':{
       collectionBackgroundFailed:'后台暂时无法完成，稍后会自动重试。',collectionProcessing:'正在补全统计',collectionProcessingReason:'后台处理中，可继续使用。',collectionProgress:'查看进度',collectionProgressCounts:'已处理 {steps} 个步骤 · {requests} 条请求记录',collectionQueued:'等待处理',collectionSteps:'读取步骤',collectionGenerators:'读取请求记录',collectionReducing:'计算统计',collectionPublishing:'保存已校验统计',
@@ -71,6 +76,11 @@ module.exports = function createDashboardI18n(initialLanguage) {
       usageScopeLocal:'本机全部',usageScopeAccount:'当前账号',quotaWindowUsage:'周期用量',quotaWindowFullRef:'约 {full} 满额',quotaWindowBasis:'当前账号该额度周期内本机实测流经 Token；估算满额仅作同比例参考（不同模型与缓存折算权重不同）。',
       quotaRingTitle:'剩余额度',quotaRingUnknown:'余额未知',quotaDisplay:'额度显示',quotaDisplayBoth:'双数字',quotaDisplayAuto:'自动',quotaDisplayCompact:'角标',quotaDisplaySaveFailed:'显示模式暂时无法保存，请重试。',
       inlineReconnecting:'内嵌栏正在自动重连；此面板仍可查看统计。',panelInlineReconnecting:'内嵌栏正在自动重连；此面板仍可查看统计。',panelDebugPortReady:'宿主未开启调试端口（已自动配置启动入口）；请完全退出并从快捷方式重开 Antigravity 以恢复内嵌栏，当前可在此面板查看统计。',panelDebugPortManual:'Antigravity 2.33+ 需带 --remote-debugging-port=0 --remote-debugging-address=127.0.0.1（或运行 python3 manage.py launch）启动以显示内嵌栏；此面板仍可查看统计。',missingDebugPort:'当前 Antigravity 未开启调试端口，无法挂载内嵌状态栏。',relaunchDebugButton:'一键重启并恢复状态栏',relaunchingDebug:'正在重启 Antigravity…',relaunchDebugFailed:'自动重启未能触发，请使用 Antigravity (Debug) 启动器重新打开。',relaunchDebugCooldown:'已发起重启请求，请稍候等待 Antigravity 重新打开。',relaunchDebugNotRunning:'未检测到运行中的 Antigravity 主程序。',autoRelaunchLabel:'缺少调试端口时自动重启恢复（如更新后）',autoRelaunchSaveFailed:'自动重启设置暂时无法保存。',
+      poolGemini:'Gemini',pool3p:'Claude / 3p',poolLocal:'本地 / BYOM',poolOther:'其他',poolRollup:'额度池汇总',
+      multiAgentDetails:'多代理与模型拆分',roleCoordinator:'协调主代理',roleWorker:'执行子代理',roleMonitor:'监控看守',roleSidecar:'定时后台任务',
+      orchestrationOverhead:'协调开销',workerExecution:'子代理执行',cacheMissSurge:'{n} 次缓存未命中峰值（{tokens}）',
+      contextBreakdown:'上下文与工具构成',breakdownUser:'用户',breakdownReply:'回复',breakdownThinking:'思考',breakdownTools:'工具返回',breakdownToolCalls:'工具入参',breakdownSystem:'系统',
+      topTools:'高占用工具',bloatBadge:'{n} 项膨胀',bloatWarningLine:'{tool} #{step}: {tokens}',bloatHint:'单次负载 ≥ 20K（严重 ≥ 50K）',
     },
     'zh-TW':{
       collectionBackgroundFailed:'背景暫時無法完成，稍後會自動重試。',collectionProcessing:'正在補全統計',collectionProcessingReason:'背景處理中，可繼續使用。',collectionProgress:'查看進度',collectionProgressCounts:'已處理 {steps} 個步驟 · {requests} 筆請求記錄',collectionQueued:'等待處理',collectionSteps:'讀取步驟',collectionGenerators:'讀取請求記錄',collectionReducing:'計算統計',collectionPublishing:'儲存已驗證統計',
@@ -105,6 +115,11 @@ module.exports = function createDashboardI18n(initialLanguage) {
       usageScopeLocal:'本機全部',usageScopeAccount:'目前帳號',quotaWindowUsage:'週期用量',quotaWindowFullRef:'約 {full} 滿額',quotaWindowBasis:'目前帳號此配額週期內本機實測流經 Token；預估滿額僅作等比例參考（不同模型與快取換算權重不同）。',
       quotaRingTitle:'剩餘額度',quotaRingUnknown:'餘額未知',quotaDisplay:'額度顯示',quotaDisplayBoth:'雙數字',quotaDisplayAuto:'自動',quotaDisplayCompact:'角標',quotaDisplaySaveFailed:'顯示模式暫時無法儲存，請再試一次。',
       inlineReconnecting:'內嵌狀態列正在自動重新連線；此面板仍可檢視統計資料。',panelInlineReconnecting:'內嵌狀態列正在自動重新連線；此面板仍可檢視統計資料。',panelDebugPortReady:'宿主未開啟偵錯連接埠（已自動設定啟動捷徑）；請完全退出並由捷徑重開 Antigravity 以恢復內嵌狀態列，目前可在此面板檢視統計資料。',panelDebugPortManual:'Antigravity 2.33+ 需帶 --remote-debugging-port=0 --remote-debugging-address=127.0.0.1（或執行 python3 manage.py launch）啟動以顯示內嵌狀態列；此面板仍可檢視統計資料。',missingDebugPort:'目前的 Antigravity 未開啟除錯連接埠，無法掛載內嵌狀態列。',relaunchDebugButton:'一鍵重啟並恢復狀態列',relaunchingDebug:'正在重啟 Antigravity…',relaunchDebugFailed:'無法自動觸發重啟，請使用 Antigravity (Debug) 啟動器重新開啟。',relaunchDebugCooldown:'已發起重啟請求，請稍候等待 Antigravity 重新開啟。',relaunchDebugNotRunning:'目前未偵測到執行中的 Antigravity 主程式。',autoRelaunchLabel:'缺少除錯連接埠時自動重啟恢復（如更新後）',autoRelaunchSaveFailed:'自動重啟設定暫時無法儲存。',
+      poolGemini:'Gemini',pool3p:'Claude / 3p',poolLocal:'本機 / BYOM',poolOther:'其他',poolRollup:'配額池彙總',
+      multiAgentDetails:'多代理與模型拆分',roleCoordinator:'協調主代理',roleWorker:'執行子代理',roleMonitor:'監控守望',roleSidecar:'定時背景工作',
+      orchestrationOverhead:'協調開銷',workerExecution:'子代理執行',cacheMissSurge:'{n} 次快取未命中峰值（{tokens}）',
+      contextBreakdown:'上下文與工具組成',breakdownUser:'使用者',breakdownReply:'回覆',breakdownThinking:'思考',breakdownTools:'工具回傳',breakdownToolCalls:'工具參數',breakdownSystem:'系統',
+      topTools:'高佔用工具',bloatBadge:'{n} 項膨脹',bloatWarningLine:'{tool} #{step}: {tokens}',bloatHint:'單次負載 ≥ 20K（嚴重 ≥ 50K）',
     },
   };
   let language=initialLanguage==='zh-CN'||initialLanguage==='zh-TW'?initialLanguage:'en';
@@ -329,9 +344,36 @@ module.exports = function createDashboardI18n(initialLanguage) {
   const quotaModelAliases={
     model_placeholder_m26:'Claude Opus 4.6 (Thinking)',
     model_placeholder_m35:'Claude Sonnet 4.6 (Thinking)',
+    model_placeholder_m405:'Claude Sonnet 5.5 (High)',
     model_placeholder_m318:'Gemini 3.8 Flash (High)',
     model_placeholder_m319:'Gemini 3.8 Flash (Medium)',
     model_placeholder_m320:'Gemini 3.8 Flash (Low)',
+    model_placeholder_m532:'Gemini 4 Neon (High)',
+    model_placeholder_m533:'Gemini 4 Neon (Medium)',
+    model_placeholder_m534:'Gemini 4 Neon (Low)',
+    model_placeholder_m535:'Gemini 4 Neon (XHigh)',
+    model_placeholder_m427:'Gemini 4 Carbon (High)',
+    model_placeholder_m437:'Gemini 4 Carbon (Medium)',
+    model_placeholder_m438:'Gemini 4 Carbon (Low)',
+    model_placeholder_m417:'Gemini 4 Argon (High)',
+    model_placeholder_m418:'Gemini 4 Argon (Medium)',
+    model_placeholder_m419:'Gemini 4 Argon (Low)',
+    model_placeholder_m525:'Gemini 4 Hydrogen (High)',
+    model_placeholder_m526:'Gemini 4 Hydrogen (Medium)',
+    model_placeholder_m527:'Gemini 4 Hydrogen (Low)',
+    model_placeholder_m528:'Gemini 4 Hydrogen (XHigh)',
+    model_placeholder_m537:'Orchestrator (Neon)',
+    'gemini-pro-orchestrator-neon':'Orchestrator (Neon)',
+    model_placeholder_m667:'Orchestrator (Carbon)',
+    'gemini-pro-orchestrator':'Orchestrator (Carbon)',
+    model_placeholder_m681:'Orchestrator (Argon)',
+    'gemini-pro-orchestrator-argon':'Orchestrator (Argon)',
+    model_placeholder_m669:'Gemini 4 Hydrogen (Orchestrator)',
+    'gemini-flash-worker-agy':'Gemini 4 Hydrogen (Orchestrator)',
+    model_placeholder_m18:'Gemini 2.5 Pro',
+    model_placeholder_m148:'Gemini 2.5 Pro',
+    model_placeholder_m50:'Gemini 2.5 Flash',
+    model_placeholder_m198:'Gemini 2.5 Flash',
     model_google_gemini_internal_byom:'Gemini (Internal BYOM)',
     model_openai_gpt_oss_120b_medium:'GPT-OSS 120B (Medium)',
     'gemini-pro-orchestrator-g1-pro':'Orchestrator (Argon)',
@@ -346,7 +388,7 @@ module.exports = function createDashboardI18n(initialLanguage) {
   function quotaGroupKind(group) {
     const id=String(group?.id||''),resolvedId=resolveQuotaModelToken(id),resolvedName=resolveQuotaModelToken(group?.name||''),value=id+' '+resolvedId+' '+resolvedName;
     if(/(?:^|[^a-z])argon(?:$|[^a-z])/i.test(value))return 'gemini-argon';
-    if(/gemini|hydrogen|carbon|orchestrator/i.test(value))return 'gemini';
+    if(/gemini|hydrogen|carbon|neon|orchestrator/i.test(value))return 'gemini';
     if(/claude|sonnet|opus|haiku|anthropic|gpt|openai|perplexity|fable/i.test(value)||/(?:^|[^a-z0-9])o[134](?:$|[^a-z0-9])/i.test(value)||/^3p(?:$|[-_])/i.test(id))return '3p';
     return null;
   }
