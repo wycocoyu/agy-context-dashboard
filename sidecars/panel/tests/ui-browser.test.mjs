@@ -260,23 +260,38 @@ test('font sync, scope switching and quota window reference render end-to-end in
   await evalJs(`() => { document.documentElement.style.setProperty('--ui-font-family', '"Georgia"'); }`);
   await waitUntil(`() => getComputedStyle(document.getElementById('ag-pulse-status-bar').shadowRoot.querySelector('.bar')).fontFamily.includes('Georgia')`, 'inline widget font synced to Georgia');
 
-  // Quota window token rows in inline context card + plural toks units
+  // Quota window token hints sit inline beside forecast with full detail in tooltip
   const quotaText = await evalJs(`() => {
     const sr = document.getElementById('ag-pulse-status-bar').shadowRoot;
     sr.querySelector('[data-card="context"]').click();
+    const fiveUsage = sr.getElementById('five-usage');
+    const weekUsage = sr.getElementById('week-usage');
+    const fiveForecast = sr.getElementById('five-forecast-text');
+    const uRect = fiveUsage.getBoundingClientRect();
+    const fRect = fiveForecast.getBoundingClientRect();
     return {
       density: document.getElementById('ag-pulse-status-bar').dataset.density,
       contextTokens: sr.getElementById('context-tokens').textContent,
-      fiveHidden: sr.getElementById('five-usage').hidden,
-      fiveVal: sr.getElementById('five-usage-value').textContent,
-      weekVal: sr.getElementById('week-usage-value').textContent,
+      fiveHidden: fiveUsage.hidden,
+      fiveVal: fiveUsage.textContent,
+      fiveTitle: fiveUsage.getAttribute('title'),
+      weekVal: weekUsage.textContent,
+      weekTitle: weekUsage.getAttribute('title'),
+      sameRow: Math.abs(uRect.top - fRect.top) < 6 && uRect.left >= fRect.right - 1,
+      contextFillBg: getComputedStyle(sr.getElementById('context-fill')).backgroundColor,
+      fiveFillBg: getComputedStyle(sr.getElementById('five-fill')).backgroundColor,
     };
   }`);
   assert.equal(quotaText.density, 'full');
   assert.ok(quotaText.contextTokens.endsWith('toks'), 'contextTokens should use plural toks: ' + quotaText.contextTokens);
   assert.equal(quotaText.fiveHidden, false);
-  assert.equal(quotaText.fiveVal, '81.1M toks (约 644.2M 满额)');
-  assert.equal(quotaText.weekVal, '129.9M toks (约 216.2M 满额)');
+  assert.equal(quotaText.fiveVal, '81.1M');
+  assert.ok(quotaText.fiveTitle.includes('81.1M toks (约 644.2M 满额)'), quotaText.fiveTitle);
+  assert.equal(quotaText.weekVal, '129.9M');
+  assert.ok(quotaText.weekTitle.includes('129.9M toks (约 216.2M 满额)'), quotaText.weekTitle);
+  assert.equal(quotaText.sameRow, true, 'compact usage hint sits inline right of forecast text');
+  assert.equal(quotaText.contextFillBg, 'rgb(118, 136, 178)');
+  assert.equal(quotaText.fiveFillBg, 'rgb(126, 165, 255)');
 
   // Cache card compact breakdown with exact title tooltips + zero horizontal ellipsis
   const cacheCard = await evalJs(`() => {
@@ -606,9 +621,9 @@ test('font sync, scope switching and quota window reference render end-to-end in
     sr.querySelector('[data-card="context"]').click();
     sr.getElementById('card-language-zh-tw').click();
   }`);
-  await waitUntil(`() => document.getElementById('ag-pulse-status-bar').shadowRoot.getElementById('week-usage-value').textContent === '129.9M toks (約 216.2M 滿額)'`, 'zh-TW quota window label');
+  await waitUntil(`() => (document.getElementById('ag-pulse-status-bar').shadowRoot.getElementById('week-usage').getAttribute('title') || '').includes('129.9M toks (約 216.2M 滿額)')`, 'zh-TW quota window label');
   await evalJs(`() => document.getElementById('ag-pulse-status-bar').shadowRoot.getElementById('card-language-zh').click()`);
-  await waitUntil(`() => document.getElementById('ag-pulse-status-bar').shadowRoot.getElementById('week-usage-value').textContent === '129.9M toks (约 216.2M 满额)'`, 'restore zh-CN');
+  await waitUntil(`() => (document.getElementById('ag-pulse-status-bar').shadowRoot.getElementById('week-usage').getAttribute('title') || '').includes('129.9M toks (约 216.2M 满额)')`, 'restore zh-CN');
 
   // 2. Navigate to Sidecar Panel and verify Fira Code font sync + compact quota height + toks cache card
   signedIn = true;
@@ -620,11 +635,21 @@ test('font sync, scope switching and quota window reference render end-to-end in
   }`);
   const panelCheck = await evalJs(`() => {
     const card = document.getElementById('context-card');
+    const fiveUsage = document.getElementById('five-usage');
+    const weekUsage = document.getElementById('week-usage');
+    const fiveForecast = document.getElementById('five-forecast-text');
+    const uRect = fiveUsage.getBoundingClientRect();
+    const fRect = fiveForecast.getBoundingClientRect();
     const contextRes = {
       rootFont: getComputedStyle(document.documentElement).fontFamily,
-      fiveHidden: document.getElementById('five-usage').hidden,
-      fiveVal: document.getElementById('five-usage-value').textContent,
-      weekVal: document.getElementById('week-usage-value').textContent,
+      fiveHidden: fiveUsage.hidden,
+      fiveVal: fiveUsage.textContent,
+      fiveTitle: fiveUsage.getAttribute('title'),
+      weekVal: weekUsage.textContent,
+      weekTitle: weekUsage.getAttribute('title'),
+      sameRow: Math.abs(uRect.top - fRect.top) < 6 && uRect.left >= fRect.right - 1,
+      contextFillBg: getComputedStyle(document.getElementById('context-fill')).backgroundColor,
+      fiveFillBg: getComputedStyle(document.getElementById('five-fill')).backgroundColor,
       fits: card.scrollHeight <= card.clientHeight + 1,
       scrollH: card.scrollHeight,
       clientH: card.clientHeight,
@@ -642,8 +667,13 @@ test('font sync, scope switching and quota window reference render end-to-end in
   }`);
   assert.ok(panelCheck.rootFont.includes('Fira Code'), 'panel font should adopt theme.fontFamily: ' + panelCheck.rootFont);
   assert.equal(panelCheck.fiveHidden, false);
-  assert.equal(panelCheck.fiveVal, '81.1M toks (约 644.2M 满额)');
-  assert.equal(panelCheck.weekVal, '129.9M toks (约 216.2M 满额)');
+  assert.equal(panelCheck.fiveVal, '81.1M');
+  assert.ok(panelCheck.fiveTitle.includes('81.1M toks (约 644.2M 满额)'), panelCheck.fiveTitle);
+  assert.equal(panelCheck.weekVal, '129.9M');
+  assert.ok(panelCheck.weekTitle.includes('129.9M toks (约 216.2M 满额)'), panelCheck.weekTitle);
+  assert.equal(panelCheck.sameRow, true, 'panel compact usage hint sits inline right of forecast text');
+  assert.equal(panelCheck.contextFillBg, 'rgb(118, 136, 178)');
+  assert.equal(panelCheck.fiveFillBg, 'rgb(126, 165, 255)');
   assert.equal(panelCheck.fits, true, `context-card should fit cleanly inside 580px frame: ${panelCheck.scrollH} vs ${panelCheck.clientH}`);
   assert.equal(panelCheck.stripCacheTotal, '61.8M tok', 'panel top strip retains tok');
   assert.equal(panelCheck.cacheCoverage, '61,795,796');

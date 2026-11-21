@@ -88,36 +88,47 @@ function renderQuota(window, prefix, now = Date.now() + serverOffset) {
   const fill = $(`${prefix}-fill`), track = $(`${prefix}-track`);
   fill.style.width = typeof remaining === 'number' ? `${remaining * 100}%` : '0%';
   fill.style.background = barBg;
-  const forecastRow = $(`${prefix}-forecast`), forecastMain = $(`${prefix}-forecast-text`);
-  if (forecastRow && forecastMain) {
-    const showForecast = Boolean(forecast && typeof forecast.timeRemaining === 'number');
-    hidden(`${prefix}-forecast`, !showForecast);
-    if (showForecast) {
-      if (forecast.willExhaust) {
-        forecastMain.textContent = t('forecastDepletes', { eta: language.shortEta(forecast.exhaustInMs), early: language.shortEta(forecast.earlyByMs) });
-        forecastMain.setAttribute('data-alert', 'true');
+  const forecastRow = $(`${prefix}-forecast`), forecastMain = $(`${prefix}-forecast-text`), usageHint = $(`${prefix}-usage`);
+  const showForecast = Boolean(forecast && typeof forecast.timeRemaining === 'number');
+  const winUsage = group?.id && !bucket?.disabled && bucket?.available ? snapshot?.usage?.quotaWindows?.[`${group.id}:${window}`] : null;
+  const showUsage = Boolean(winUsage && typeof winUsage.observedTokens === 'number' && winUsage.observedTokens > 0);
+  if (forecastRow) {
+    hidden(`${prefix}-forecast`, !showForecast && !showUsage);
+    if (forecastMain) {
+      forecastMain.hidden = !showForecast;
+      if (showForecast) {
+        if (forecast.willExhaust) {
+          forecastMain.textContent = t('forecastDepletes', { eta: language.shortEta(forecast.exhaustInMs), early: language.shortEta(forecast.earlyByMs) });
+          forecastMain.setAttribute('data-alert', 'true');
+        } else {
+          forecastMain.removeAttribute('data-alert');
+          forecastMain.textContent = forecast.warmingUp ? t('forecastWarming', { pct: percent(forecast.used) }) : t('forecastLeft', { pct: percent(forecast.projectedRemaining) });
+        }
       } else {
         forecastMain.removeAttribute('data-alert');
-        forecastMain.textContent = forecast.warmingUp ? t('forecastWarming', { pct: percent(forecast.used) }) : t('forecastLeft', { pct: percent(forecast.projectedRemaining) });
+        forecastMain.textContent = '';
       }
-      forecastRow.title = t('forecastBasis', { remaining: percent(forecast.remaining), time: percent(forecast.timeRemaining) });
     }
+    if (showForecast) forecastRow.title = t('forecastBasis', { remaining: percent(forecast.remaining), time: percent(forecast.timeRemaining) });
+    else forecastRow.removeAttribute('title');
   }
   if (typeof remaining === 'number') { track.setAttribute('aria-valuenow', String(remaining * 100)); track.setAttribute('aria-valuemin','0'); track.setAttribute('aria-valuemax','100'); }
   else track.removeAttribute('aria-valuenow');
   const unavailableNote = !bucket?.available ? t('noQuota') : bucket.disabled ? t('disabledQuota') : remaining === null ? t('noFraction') : '';
   text(`${prefix}-note`, unavailableNote);
   hidden(`${prefix}-note`, !unavailableNote);
-  const usageRow = $(`${prefix}-usage`);
-  if (usageRow) {
-    const winUsage = group?.id && !bucket?.disabled && bucket?.available ? snapshot?.usage?.quotaWindows?.[`${group.id}:${window}`] : null;
-    const showUsage = Boolean(winUsage && typeof winUsage.observedTokens === 'number' && winUsage.observedTokens > 0);
+  if (usageHint) {
     hidden(`${prefix}-usage`, !showUsage);
     if (showUsage) {
       const refText = winUsage.estimatedFullTokens ? ` (${t('quotaWindowFullRef', { full: compact(winUsage.estimatedFullTokens) })})` : '';
-      text(`${prefix}-usage-value`, `${compact(winUsage.observedTokens)} ${tokUnit(winUsage.observedTokens)}${refText}`);
-      usageRow.title = t('quotaWindowBasis');
-    } else usageRow.removeAttribute('title');
+      const detailText = `${compact(winUsage.observedTokens)} ${tokUnit(winUsage.observedTokens)}${refText}`;
+      text(`${prefix}-usage`, compact(winUsage.observedTokens));
+      const nextTip = `${t('quotaWindowUsage')}: ${detailText} · ${t('quotaWindowBasis')}`;
+      if (usageHint.title !== nextTip) usageHint.title = nextTip;
+    } else {
+      text(`${prefix}-usage`, '');
+      if (usageHint.hasAttribute('title')) usageHint.removeAttribute('title');
+    }
   }
 }
 

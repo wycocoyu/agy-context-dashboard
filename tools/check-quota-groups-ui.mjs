@@ -59,8 +59,10 @@ try{
   assert.equal(await scope.locator('#week-pace-tick').count(),0,'The time-pace tick should not exist');
   assert.equal(await scope.locator('#five-projected-fill').count(),0,'The hatched five-hour forecast segment was removed');
   assert.equal(await scope.locator('#week-projected-fill').count(),0,'The hatched weekly forecast segment was removed');
-  const accentBg=await scope.locator('#context-fill').evaluate(e=>getComputedStyle(e).backgroundColor);
-  assert.equal(await scope.locator('#week-fill').evaluate(e=>getComputedStyle(e).backgroundColor),accentBg,'Forecast exhaustion keeps the solid accent bar color');
+  const [contextBg,quotaAccentBg]=await scope.evaluate(el=>{const host=el.shadowRoot||el,read=v=>{const p=document.createElement('span');p.style.color=`var(${v})`;host.append(p);const c=getComputedStyle(p).color;p.remove();return c;};return [read('--pulse-context-accent'),read('--pulse-quota-accent')];});
+  assert.equal(await scope.locator('#context-fill').evaluate(e=>getComputedStyle(e).backgroundColor),contextBg,'Context bar uses muted slate-blue context accent');
+  assert.notEqual(contextBg,quotaAccentBg,'Context occupancy and quota balance bars keep distinct luminance');
+  assert.equal(await scope.locator('#week-fill').evaluate(e=>getComputedStyle(e).backgroundColor),quotaAccentBg,'Forecast exhaustion keeps the solid quota accent bar color');
   assert.equal(await scope.locator('#week-forecast').isVisible(),true);
   if(mode==='panel'){
    assert.equal(await scope.locator('#quota-group').inputValue(),'gemini-argon-wtu');
@@ -68,13 +70,15 @@ try{
    assert.equal(await scope.locator('#quota-overview').getAttribute('data-windows'),'1');
    assert.match(await scope.locator('#panel-group-name').textContent(),/Gemini \(Argon\)/);
    assert.match(await scope.locator('#panel-quota-siblings').textContent(),/Claude/);
+   assert.equal(await scope.locator('#panel-quota-siblings .quota-sibling').first().evaluate(e=>getComputedStyle(e).backgroundColor),'rgba(0, 0, 0, 0)','Collapsed sibling rows default to transparent');
    const sibBg=await scope.locator('#panel-quota-siblings .sibling-bar i').first().evaluate(e=>getComputedStyle(e).backgroundColor);
    assert.notEqual(sibBg,'rgb(89, 101, 117)','Sibling bar uses soft accent blue instead of muted gray');
   }else{
    assert.match(await scope.locator('#active-group-name').textContent(),/Gemini \(Argon\)/);
    assert.match(await scope.locator('#quota-siblings').textContent(),/Claude/);
+   assert.equal(await scope.locator('#quota-siblings .quota-sibling').first().evaluate(e=>getComputedStyle(e).backgroundColor),'rgba(0, 0, 0, 0)','Collapsed sibling rows default to transparent');
    const sibBg=await scope.locator('#quota-siblings .sibling-bar i').first().evaluate(e=>getComputedStyle(e).backgroundColor);
-   assert.ok(sibBg.startsWith('rgba(')||sibBg.startsWith('color(')||sibBg!==accentBg,'Sibling bar uses translucent soft accent tint');
+   assert.ok(sibBg.startsWith('rgba(')||sibBg.startsWith('color(')||sibBg!==quotaAccentBg,'Sibling bar uses translucent soft accent tint');
   }
   groups.reverse();model='Gemini Flash';await refresh();await balance.filter({hasText:'80.0%'}).waitFor();
   assert.equal(await five.isVisible(),true);
@@ -84,7 +88,7 @@ try{
   groups.at(-1).name='Gemini 4 Argon';await refresh();await balance.filter({hasText:'30.0%'}).waitFor();
   assert.equal(await five.isVisible(),false);
   groups.at(-1).windows.weekly.remaining=.15;await refresh();await balance.filter({hasText:'15.0%'}).waitFor();
-  assert.equal(await scope.locator('#week-fill').evaluate(e=>getComputedStyle(e).backgroundColor),accentBg,'Remaining 15% keeps the solid accent bar color');
+  assert.equal(await scope.locator('#week-fill').evaluate(e=>getComputedStyle(e).backgroundColor),quotaAccentBg,'Remaining 15% keeps the solid quota accent bar color');
   groups.at(-1).windows.weekly.remaining=0;await refresh();await balance.filter({hasText:'0.0%'}).waitFor();
   assert.equal(await five.isVisible(),false,'Exhausted weekly quota must not fall back to shared Gemini');
   const dangerBg=await scope.evaluate(el=>{const host=el.shadowRoot||el,probe=document.createElement('span');probe.style.color='var(--pulse-danger)';host.append(probe);const c=getComputedStyle(probe).color;probe.remove();return c;});

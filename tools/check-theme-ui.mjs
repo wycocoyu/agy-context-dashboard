@@ -126,12 +126,12 @@ async function checkAccent(page,scope,inline){
     const root=document.documentElement;
     if(primary)root.style.setProperty('--primary',primary);else root.style.removeProperty('--primary');
   },{mode,primary});
-  const color=async(expected,ringExpected=expected)=>{
-    await scope.locator('#context-fill').evaluate((e,expected)=>new Promise((resolve,reject)=>{
+  const color=async(expected,contextExpected=expected,ringExpected=expected)=>{
+    await scope.locator('#five-fill').evaluate((e,expected)=>new Promise((resolve,reject)=>{
       const end=Date.now()+7000;const check=()=>{if(getComputedStyle(e).backgroundColor===expected)resolve();else if(Date.now()>end)reject(new Error('Accent did not follow host: '+getComputedStyle(e).backgroundColor));else setTimeout(check,50);};check();
     }),expected);
-    assert.equal(await scope.locator('#five-fill').evaluate(e=>getComputedStyle(e).backgroundColor),expected);
     assert.equal(await scope.locator('#week-fill').evaluate(e=>getComputedStyle(e).backgroundColor),expected);
+    assert.equal(await scope.locator('#context-fill').evaluate(e=>getComputedStyle(e).backgroundColor),contextExpected);
     if(inline){
       const ring=await scope.locator('#context-ring').evaluate(e=>getComputedStyle(e).backgroundImage);
       assert.ok(ring.includes(ringExpected),'Context ring must use the same host primary');
@@ -140,15 +140,15 @@ async function checkAccent(page,scope,inline){
   };
   // Saved seeds can differ from the active preset. Actual DOM primary wins.
   previewHostTheme={dark:{primary:'#7b3fe4'},light:{primary:'#e04f5f'}};
-  await set('dark','#da7756');await color('rgb(218, 119, 86)');
-  await set('dark','#77aa55');await color('rgb(119, 170, 85)');
-  await set('light','#007acc');await color('rgb(0, 122, 204)');
-  await set('light',null);await color('rgb(224, 79, 95)');
-  await set('dark',null);await color('rgb(123, 63, 228)');
+  await set('dark','#da7756');await color('rgb(218, 119, 86)','rgb(157, 108, 92)');
+  await set('dark','#77aa55');await color('rgb(119, 170, 85)','rgb(111, 137, 96)');
+  await set('light','#007acc');await color('rgb(0, 122, 204)','rgb(43, 114, 161)');
+  await set('light',null);await color('rgb(224, 79, 95)','rgb(177, 92, 102)');
+  await set('dark',null);await color('rgb(123, 63, 228)','rgb(95, 65, 150)');
   // Fresh backend snapshots update seeds without reinjection/restart.
   previewHostTheme={dark:{primary:'#da7756'},light:{primary:'#007acc'}};
-  await color('rgb(218, 119, 86)');
-  await set('light',null);await color('rgb(0, 122, 204)');
+  await color('rgb(218, 119, 86)','rgb(157, 108, 92)');
+  await set('light',null);await color('rgb(0, 122, 204)','rgb(43, 114, 161)');
   previewHostTheme={light:{primary:'#ffffff'}};await color('rgb(255, 255, 255)');
   const readable=await scope.evaluate(element=>{
     const node=element.shadowRoot?element:document.documentElement,style=getComputedStyle(node);
@@ -157,11 +157,11 @@ async function checkAccent(page,scope,inline){
     const fg=lightness(getComputedStyle(probe).color);probe.style.color='var(--pulse-card)';const bg=lightness(getComputedStyle(probe).color);probe.remove();
     return (Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05);
   });assert.ok(readable>=4.5,'Small accent text must remain readable');
-  previewHostTheme={light:{primary:'url(https://invalid.example)'}};await color('rgb(49, 95, 196)','rgb(70, 103, 160)');
+  previewHostTheme={light:{primary:'url(https://invalid.example)'}};await color('rgb(70, 120, 230)','rgb(78, 103, 153)','rgb(70, 103, 160)');
   // Invalid DOM colors also fall back; modern CSS token formats are accepted.
-  await set('light','transparent');await color('rgb(49, 95, 196)','rgb(70, 103, 160)');
-  await set('light','210 100% 40%');await color('rgb(0, 102, 204)');
-  previewHostTheme={};await set('dark',null);await color('rgb(133, 168, 255)','rgb(159, 173, 199)');
+  await set('light','transparent');await color('rgb(70, 120, 230)','rgb(78, 103, 153)','rgb(70, 103, 160)');
+  await set('light','210 100% 40%');await color('rgb(0, 102, 204)','rgb(37, 96, 155)');
+  previewHostTheme={};await set('dark',null);await color('rgb(126, 165, 255)','rgb(118, 136, 178)','rgb(159, 173, 199)');
   if(inline){
     await scope.locator('[data-card=context]').hover();await page.screenshot({path:join(output,'host-accent-inline.png')});
   }else await page.screenshot({path:join(output,'host-accent-panel.png')});
@@ -328,8 +328,16 @@ try {
     assert.match(await host.locator('#context-summary').textContent(),/44%/);
     await page.screenshot({path:join(output,`${mode}-inline.png`)});
     assert.match(await host.locator('#active-group-name').textContent(),/Gemini/);
-    assert.equal(await host.locator('#quota-siblings [data-group="3p"]').isVisible(),true);
-    await host.locator('#quota-siblings [data-group="3p"]').click();
+    const sibBtn=host.locator('#quota-siblings [data-group="3p"]');
+    assert.equal(await sibBtn.isVisible(),true);
+    assert.equal(await sibBtn.evaluate(e=>getComputedStyle(e).backgroundColor),'rgba(0, 0, 0, 0)','Sibling rows stay transparent at rest');
+    const expectedHover=await host.evaluate(el=>{const p=document.createElement('span');p.style.color='var(--pulse-hover)';p.style.borderColor='var(--pulse-border)';el.shadowRoot.append(p);const s=getComputedStyle(p);const r={bg:s.color,border:s.borderTopColor};p.remove();return r;});
+    await sibBtn.hover();
+    await page.waitForFunction((exp)=>{
+      const b=document.getElementById('ag-pulse-status-bar')?.shadowRoot?.querySelector('#quota-siblings [data-group="3p"]');
+      if(!b)return false;const s=getComputedStyle(b);return s.backgroundColor===exp.bg&&s.borderTopColor===exp.border;
+    },expectedHover);
+    await sibBtn.click();
     await page.waitForTimeout(180);
     assert.equal(await host.locator('#context-card').isVisible(),true,`${mode}: composer focus stole the quota card`);
     assert.equal(await page.evaluate(()=>window.testComposerClicks),0,'Widget clicks must not activate composer focus handlers');
@@ -340,6 +348,11 @@ try {
     await page.waitForTimeout(180);
     assert.equal(await host.locator('#context-card').isVisible(),true);
     assert.equal(await host.locator('#quota-siblings .quota-sibling').first().evaluate(e=>e.getRootNode().activeElement?.classList.contains('quota-sibling')),true);
+    await page.mouse.move(0,0);
+    await page.waitForFunction((exp)=>{
+      const b=document.getElementById('ag-pulse-status-bar')?.shadowRoot?.querySelector('.quota-sibling');
+      if(!b)return false;const s=getComputedStyle(b);return b.matches(':focus-visible')&&s.backgroundColor===exp.bg&&s.borderTopColor===exp.border;
+    },expectedHover);
     assert.match(await host.locator('#active-group-name').textContent(),/Gemini/);
     assert.match(await host.locator('#five-balance').textContent(),/83\.4%/);
     await page.locator('[aria-label="Message input"]').click();
