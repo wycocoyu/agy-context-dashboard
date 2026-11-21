@@ -10,7 +10,7 @@ import {normalizeConversationId} from './delegation.mjs';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCOPE = /^[0-9a-f]{64}$/;
-const numeric = ['steps','rounds','requests','measuredRequests','missingTiming','tps','latestTps','peakTps','streamingSeconds','modelSeconds','toolSeconds','ttftSeconds','excludedTiming','rateWarnings'];
+const numeric = ['steps','rounds','requests','measuredRequests','missingTiming','tps','latestTps','peakTps','e2eTps','streamingSeconds','modelSeconds','toolSeconds','ttftSeconds','ttftMedianSeconds','latestTtftSeconds','excludedTiming','rateWarnings'];
 const counts = ['input','output','responseOutput','thinkingOutput','cacheRead','cacheWrite'];
 const cache = ['inputTokens','cachedTokens','cacheWriteTokens','uncachedTokens','outputTokens','measuredRequests','missingRequests','totalTokens','hitRate'];
 const tokens = ['inputTokens','cachedTokens','cacheWriteTokens','uncachedTokens','outputTokens','measuredRequests','inputRequests','outputRequests','missingInputRequests','missingOutputRequests','totalTokens'];
@@ -96,7 +96,8 @@ export function safeMetrics(value, conversationId) {
   if (result.rateVersion !== RATE_VERSION) {
     // Old aggregates cannot be repaired without the raw trajectory. Retain
     // usage/context, but never present a legacy unvalidated rate as trustworthy.
-    result.tps = result.latestTps = result.peakTps = result.streamingSeconds = null;
+    result.tps = result.latestTps = result.peakTps = result.e2eTps = result.streamingSeconds = null;
+    result.ttftMedianSeconds = result.latestTtftSeconds = null;
     result.recentTps = [];
     result.measuredRequests = 0;
     result.latestRateStatus = 'legacy';

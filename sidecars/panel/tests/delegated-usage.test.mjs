@@ -82,7 +82,7 @@ test('parent snapshot resolves while child waits; task updates never replace par
  gate.resolve(childValue);await bounded(fixture.store.delegated.idle());
  const actual=fixture.store.sessions.get(parent).data;
  assert.equal(actual.taskUsage.tokens.totalTokens,unitTokens+925);assert.equal(actual.taskUsage.state,'ready');
- for(const key of ['tps','latestTps','streamingSeconds','modelSeconds','toolSeconds','requests','rounds','steps'])assert.equal(actual[key],expected[key],key);
+ for(const key of ['tps','latestTps','e2eTps','streamingSeconds','modelSeconds','toolSeconds','ttftSeconds','ttftMedianSeconds','latestTtftSeconds','requests','rounds','steps'])assert.equal(actual[key],expected[key],key);
  assert.deepEqual(actual.context,expected.context);assert.deepEqual(actual.counts,expected.counts);assert.deepEqual(actual.tokens,expected.tokens);
  assert.deepEqual(fixture.state.sources.map(s=>s.id),[parent,child]);
  for(const source of fixture.state.sources)assert.equal(source.value.trajectory.cascadeId,source.id,'Each source is forwarded under its own identity');

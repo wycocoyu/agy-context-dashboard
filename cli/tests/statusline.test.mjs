@@ -451,3 +451,28 @@ test('modernized --preview reflects agy 1.5.9, Gemini 4 Hydrogen (XHigh) and Arg
   assert.match(zhResult.stdout, /^Argon\s+剩余/m);
   assert.match(zhResult.stdout, /^Claude\s+剩余/m);
 });
+
+test('CLI contract preserves output and cacheCreationTokens without fabricating streaming TPS or TTFT', () => {
+  const payload = {
+    version: '1.5.9',
+    model: { id: 'gemini-4-hydrogen-xhigh', display_name: 'Gemini 4 Hydrogen (XHigh)' },
+    context_window: {
+      used_percentage: 25,
+      context_window_size: 1000000,
+      current_usage: { input_tokens: 100, output_tokens: 3205, cache_read_input_tokens: 900, cache_creation_input_tokens: 50 },
+    },
+    streaming_duration: 22.54,
+    time_to_first_token: 4.78,
+  };
+  const metrics = normalize(payload);
+  assert.equal(metrics.outputTokens, 3205);
+  assert.equal(metrics.cacheCreationTokens, 50);
+  assert.equal(metrics.cacheRate.reason, 'unverified-cache-write');
+  assert.equal(Object.hasOwn(metrics, 'tps'), false);
+  assert.equal(Object.hasOwn(metrics, 'e2eTps'), false);
+  assert.equal(Object.hasOwn(metrics, 'ttftSeconds'), false);
+  const rendered = render(metrics, { color: false, details: true, width: 120 });
+  assert.match(rendered, /Output 3\.2K/);
+  assert.match(rendered, /Cache write 50/);
+  assert.doesNotMatch(rendered, /tok\/s|TTFT/i);
+});

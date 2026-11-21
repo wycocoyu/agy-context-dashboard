@@ -99,15 +99,15 @@ test('legacy rates are masked offline, then fully recalculated without dropping 
   bad.stepIndices=[0];bad.chatModel.streamingDuration='0.349271s';
   bad.chatModel.timeToFirstToken='106s';bad.chatModel.usage.responseOutputTokens='17776';bad.chatModel.usage.outputTokens='17776';
   good.trajectory.steps=[{type:'CORTEX_STEP_TYPE_PLANNER_RESPONSE',plannerResponse:{toolCalls:[{}]}}];
-  const fresh=trajectoryMetrics(good),legacy={...fresh,tps:7600,latestTps:50894,measuredRequests:2};
+  const fresh=trajectoryMetrics(good),legacy={...fresh,tps:7600,latestTps:50894,e2eTps:1200,ttftMedianSeconds:1.5,latestTtftSeconds:1.5,measuredRequests:2};
   delete legacy.rateVersion;delete legacy.latestRateStatus;
   await history.save(a,id,legacy);
   const offline=await new MetricsStore(client(async()=>{throw Error('offline');}),{history}).snapshot({conversationId:id});
-  assert.equal(offline.speed.tps,null);assert.equal(offline.speed.peakTps,null);assert.deepEqual(offline.speed.recentTps,[]);assert.equal(offline.speed.latestRateStatus,'legacy');assert.equal(offline.speed.counts.output,17876);
+  assert.equal(offline.speed.tps,null);assert.equal(offline.speed.e2eTps,null);assert.equal(offline.speed.peakTps,null);assert.equal(offline.speed.ttftMedianSeconds,null);assert.equal(offline.speed.latestTtftSeconds,null);assert.deepEqual(offline.speed.recentTps,[]);assert.equal(offline.speed.latestRateStatus,'legacy');assert.equal(offline.speed.counts.output,17876);
   const fixed=await new MetricsStore(client(async()=>good),{history}).snapshot({conversationId:id});
   assert.equal(fixed.speed.tps,50);assert.equal(fixed.speed.peakTps,50);assert.deepEqual(fixed.speed.recentTps,[50]);assert.equal(fixed.speed.excludedTiming,1);assert.equal(fixed.speed.measuredRequests,1);
   assert.equal(fixed.speed.cache.outputTokens,17876);assert.equal(fixed.speed.restoredFromHistory,false);
-  const saved=await history.load(a,id);assert.equal(saved.metrics.rateVersion,2);assert.equal(saved.metrics.tps,50);
+  const saved=await history.load(a,id);assert.equal(saved.metrics.rateVersion,3);assert.equal(saved.metrics.tps,50);
 });
 
 test('same coverage quality correction with fewer eligible samples replaces saved rates',async t=>{

@@ -49,18 +49,19 @@
     </section>
     <section class="card-stage" data-i18n-aria="panelDetails" aria-label="Metric details">
       <article class="detail-card" id="speed-card" role="tabpanel" tabindex="0" aria-labelledby="speed-tab">
-        <div class="hero-row">
-          <div class="hero-main">
-            <div class="hero-label"><svg class="icon"><use id="speed-hero-icon" href="#gauge"/></svg><span data-i18n="latestSpeed">Latest speed</span></div>
+        <div class="hero-row" id="speed-hero-row">
+          <div class="hero-main" id="speed-hero-main">
+            <div class="hero-label"><svg class="icon"><use id="speed-hero-icon" href="#gauge"/></svg><span data-i18n="latestSpeed">Latest decode</span></div>
             <div class="hero-value"><strong id="latest-tps">—</strong><span class="hero-unit" id="panel-latest-unit">tok/s</span></div>
           </div>
           <svg class="panel-speed-trail" id="panel-speed-trail" viewBox="0 0 120 44" aria-hidden="true"></svg>
           <div class="style-toggle" role="group" data-i18n-aria="speedStyle" aria-label="Speed card style"><button class="style-toggle-button" type="button" id="speed-style-minimal" data-speed-style-choice="minimal"><svg class="icon"><use href="#pulse"/></svg></button><button class="style-toggle-button" type="button" id="speed-style-cat" data-speed-style-choice="cat"><svg class="icon"><use href="#cat"/></svg></button></div>
         </div>
         <dl class="stats-grid speed-stats">
-          <div><dt><span data-i18n="sessionAvg">Session avg</span></dt><dd><strong id="session-tps">—</strong><span class="stat-unit" id="panel-session-unit"> tok/s</span></dd></div>
-          <div><dt><span data-i18n="ttftShort">TTFT</span></dt><dd id="ttft">—</dd></div>
-          <div><dt><span data-i18n="peakSpeed">Peak</span></dt><dd><strong id="peak-tps">—</strong><span class="stat-unit"> tok/s</span></dd></div>
+          <div id="session-speed-cell"><dt><span data-i18n="sessionAvg">Session decode</span></dt><dd><strong id="session-tps">—</strong><span class="stat-unit" id="panel-session-unit"> tok/s</span></dd></div>
+          <div id="e2e-speed-cell"><dt><span data-i18n="e2eSpeed">E2E speed</span></dt><dd><strong id="e2e-tps">—</strong><span class="stat-unit" id="panel-e2e-unit"> tok/s</span></dd></div>
+          <div id="ttft-cell"><dt><span data-i18n="ttftShort">TTFT (P50 / Last)</span></dt><dd><strong id="ttft">—</strong><span class="ttft-latest" id="ttft-latest"></span></dd></div>
+          <div id="peak-speed-cell"><dt><span data-i18n="peakSpeed">Peak decode</span></dt><dd><strong id="peak-tps">—</strong><span class="stat-unit"> tok/s</span></dd></div>
         </dl>
         <div class="speed-meta">
           <div class="speed-meta-row"><span id="speed-times">—</span><span id="token-detail">—</span></div>

@@ -1,6 +1,6 @@
 // Pure transforms. No credentials, prompts, or message text enter the public result.
 import { contextMetrics, formatModelName } from './context.mjs';
-import { classifyRates, RATE_VERSION, RATE_REASONS } from './rate-quality.mjs';
+import { classifyRates, median, RATE_VERSION, RATE_REASONS } from './rate-quality.mjs';
 export function seconds(value) {
   if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null;
   if (typeof value === 'string' && /^\d+(?:\.\d+)?s$/.test(value)) {
@@ -63,7 +63,7 @@ export function trajectoryMetrics(response, storage = null) {
   const samples = storage?.samples || [], ids = storage?.ids || new Map();
   const steps = trajectory.steps || [];
   const counts = { input: 0, output: 0, responseOutput: 0, thinkingOutput: 0, cacheRead: 0, cacheWrite: 0 };
-  let modelSeconds = 0, ttftSeconds = 0, ttftSamples = 0, missingTiming = 0;
+  let modelSeconds = 0;
   const cache = { inputTokens:0, cachedTokens:0, cacheWriteTokens:0, uncachedTokens:0, outputTokens:0, measuredRequests:0, missingRequests:0 };
   // Token availability is independent of cache-ratio availability. In particular,
   // a historical request may retain output usage but lack normalized input data.
@@ -112,9 +112,11 @@ export function trajectoryMetrics(response, storage = null) {
     if (parts.some(([, ,value])=>value!==null) || output !== null) tokens.measuredRequests++;
     const visible = tokenCount(usage.responseOutputTokens);
     const thinking = tokenCount(usage.thinkingOutputTokens);
-    // Gemini may finish thinking before the first visible streaming token. Pair the
-    // response token count with streamingDuration; do not charge thinking to that span.
     const responseTokens = visible ?? (output !== null && thinking !== null ? Math.max(0, output - thinking) : output);
+    const combinedOutput = visible !== null && thinking !== null ? tokenCount(thinking + visible) : null;
+    // Antigravity chatModel.streamingDuration spans thinking and visible output
+    // together, so pair it with total outputTokens (thinking + response).
+    const streamTokens = output ?? combinedOutput ?? visible;
     const duration = seconds(chat.streamingDuration);
     const ttft = seconds(chat.timeToFirstToken);
     counts.input += tokenCount(usage.inputTokens) ?? 0;
@@ -123,7 +125,6 @@ export function trajectoryMetrics(response, storage = null) {
     counts.thinkingOutput += thinking ?? 0;
     counts.cacheRead += tokenCount(usage.cacheReadTokens) ?? 0;
     counts.cacheWrite += tokenCount(usage.cacheWriteTokens) ?? 0;
-    if (ttft !== null) { ttftSeconds += ttft; ttftSamples++; }
     modelSeconds += (ttft ?? 0) + (duration ?? 0);
     const reasons = [];
     if (['outputTokens','responseOutputTokens','thinkingOutputTokens'].some(key=>usage[key] !== undefined && tokenCount(usage[key]) === null) ||
@@ -138,37 +139,50 @@ export function trajectoryMetrics(response, storage = null) {
       .filter(step=>/PLANNER_RESPONSE/.test(String(step?.type || '')));
     const toolOnly = planners.length > 0 && planners.every(step=>step.plannerResponse?.toolCalls?.length > 0 &&
       !String(step.plannerResponse?.response || '').trim());
-    const basis = visible !== null || thinking !== null ? 'response' : 'all-output';
+    const basis = output !== null || combinedOutput !== null ? 'all-output' : visible !== null ? 'response' : 'all-output';
     const rawModel = chat.modelDisplayName || chat.responseModel || String(chat.model || usage.model || '');
-    const sample = { responseTokens, duration, ttft, reasons, toolOnly,
-      tps: responseTokens !== null && duration > 0 ? responseTokens / duration : null,
+    const sample = { outputTokens: streamTokens, responseTokens, duration, ttft, reasons, toolOnly,
+      tps: streamTokens !== null && duration > 0 ? streamTokens / duration : null,
       model: formatModelName(rawModel) || '', basis,
       profile: JSON.stringify([usage.apiProvider || '',chat.responseModel || usage.model || chat.model || chat.modelDisplayName || '',basis]) };
     samples.push(sample);
     ids.set(id,{signature,sample});
   }
   (storage?.classify || classifyRates)(samples);
-  const accepted = samples.filter(sample=>sample.status === 'ok');
-  missingTiming = samples.filter(sample=>sample.status === 'missing' && sample.responseTokens > 0).length;
-  const excludedTiming = samples.filter(sample=>sample.status === 'unreliable').length;
-  const rateWarnings = samples.filter(sample=>sample.status === 'ok' && (sample.duration < 1 || sample.outlier)).length;
-  const timingReasons = Object.fromEntries(RATE_REASONS.map(reason=>[reason,samples.filter(sample=>sample.reasons.includes(reason)).length]));
-  let acceptedCount = 0, streamingSeconds = 0, sampledTokens = 0, peakTps = null;
-  const recentTps = [];
-  for (const s of accepted) {
-    acceptedCount++;
-    streamingSeconds += s.duration;
-    sampledTokens += s.responseTokens;
-    if (typeof s.tps === 'number' && Number.isFinite(s.tps)) {
-      if (peakTps === null || s.tps > peakTps) peakTps = s.tps;
-      if (recentTps.length === 16) recentTps.shift();
-      recentTps.push(Math.round(s.tps * 10) / 10);
+  let acceptedCount = 0, streamingSeconds = 0, sampledTokens = 0, e2eTokens = 0, e2eSeconds = 0, peakTps = null;
+  let missingTiming = 0, excludedTiming = 0, rateWarnings = 0, sampleCount = 0, latest = null;
+  let allResponse = true, acceptedResponse = true;
+  const timingReasons = Object.fromEntries(RATE_REASONS.map(reason=>[reason,0]));
+  const recentTps = [], ttftValues = [];
+  for (const s of samples) {
+    sampleCount++;
+    latest = s;
+    if (s.basis !== 'response') allResponse = false;
+    if (typeof s.ttft === 'number' && Number.isFinite(s.ttft)) ttftValues.push(s.ttft);
+    for (const reason of s.reasons) if (Object.hasOwn(timingReasons, reason)) timingReasons[reason]++;
+    if (s.status === 'missing' && (s.outputTokens ?? 0) > 0) missingTiming++;
+    else if (s.status === 'unreliable') excludedTiming++;
+    else if (s.status === 'ok') {
+      if (s.basis !== 'response') acceptedResponse = false;
+      if (s.duration < 1 || s.outlier) rateWarnings++;
+      acceptedCount++;
+      streamingSeconds += s.duration;
+      sampledTokens += s.outputTokens;
+      if (typeof s.ttft === 'number' && Number.isFinite(s.ttft) && s.ttft + s.duration > 0) {
+        e2eTokens += s.outputTokens;
+        e2eSeconds += s.ttft + s.duration;
+      }
+      if (typeof s.tps === 'number' && Number.isFinite(s.tps)) {
+        if (peakTps === null || s.tps > peakTps) peakTps = s.tps;
+        if (recentTps.length === 16) recentTps.shift();
+        recentTps.push(Math.round(s.tps * 10) / 10);
+      }
     }
   }
-  const basisSamples = acceptedCount ? accepted : samples;
+  const ttftMedianSeconds = median(ttftValues);
+  const latestTtftSeconds = typeof latest?.ttft === 'number' && Number.isFinite(latest.ttft) ? latest.ttft : null;
   const tools = steps.filter(s => /SEARCH_WEB|BROWSE|RUN_COMMAND|COMMAND|READ|WRITE|EDIT|CODE_ACTION|TOOL|MCP|LIST|GREP|VIEW|FIND|TERMINAL/i.test(String(s.type || '')) || s.metadata?.toolCall);
   const toolSeconds = storage ? storage.toolSeconds() : unionSeconds(tools.map(s => [Date.parse(s.metadata.startedAt || s.metadata.createdAt), Date.parse(s.metadata.completedAt)]));
-  const latest = samples.at(-1) || null;
   const lastChat = storage ? storage.lastChat() : [...generators].reverse().find(g => g.chatModel)?.chatModel;
   let lastActiveMs = NaN;
   const considerTime = value => {
@@ -196,10 +210,12 @@ export function trajectoryMetrics(response, storage = null) {
       complete:tokens.missingInputRequests===0&&tokens.missingOutputRequests===0&&inputParts.every(value=>value!==null)&&tokens.outputTokens!==null&&totalTokens!==null},
     cache:{...cache,totalTokens:cache.inputTokens+cache.outputTokens,hitRate:cache.inputTokens>0?cache.cachedTokens/cache.inputTokens:null,complete:cache.missingRequests===0},
     tps: streamingSeconds > 0 ? sampledTokens / streamingSeconds : null, latestTps: latest?.status === 'ok' ? latest.tps : null,
+    e2eTps: e2eSeconds > 0 ? e2eTokens / e2eSeconds : null,
     peakTps, recentTps, lastActiveAt,
     latestRateStatus: latest?.status ?? 'missing',
-    rateBasis: basisSamples.length && basisSamples.every(s => s.basis === 'response') ? 'response' : 'all-output',
-    streamingSeconds, modelSeconds, toolSeconds, ttftSeconds: ttftSamples ? ttftSeconds / ttftSamples : null,
+    rateBasis: (acceptedCount ? acceptedResponse : sampleCount > 0 && allResponse) ? 'response' : 'all-output',
+    streamingSeconds, modelSeconds, toolSeconds,
+    ttftSeconds: ttftMedianSeconds, ttftMedianSeconds, latestTtftSeconds,
     latestShortSample: latest?.status === 'ok' && latest.duration < 1, model: latest?.model || null,
     context: contextMetrics(lastChat?.chatStartMetadata?.contextWindowMetadata, {
       model:lastChat?.modelDisplayName || lastChat?.responseModel || String(lastChat?.model || ''),

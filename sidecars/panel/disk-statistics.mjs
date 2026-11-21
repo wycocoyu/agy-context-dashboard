@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS deviations(v REAL); CREATE INDEX IF NOT EXISTS deviat
  truncate(kind,from){const table=kind==='steps'?'steps':kind==='generators'?'generators':null;if(!table||!Number.isSafeInteger(from)||from<0)throw Error('Invalid truncate');this.statement(`DELETE FROM ${table} WHERE i>=?`).run(from);this.countCache[table]=this.statement(`SELECT count(*) n FROM ${table}`).get().n;}
  sequence(table){const self=this,seq=new Sequence(function*(){for(const row of self.statement(`SELECT j FROM ${table} ORDER BY i`).iterate()){self.tick();yield table==='samples'?decodeSample(row.j):JSON.parse(row.j);}});Object.defineProperty(seq,'length',{get:()=>table==='samples'?self.sampleCount:self.countCache[table]});return seq;}
  stepProxy(){const seq=this.sequence('steps'),self=this;return new Proxy([],{get(target,key){if(key==='length')return self.counts().steps;if(typeof key==='string'&&/^\d+$/.test(key)){const row=self.statement('SELECT j FROM steps WHERE i=?').get(Number(key));return row?JSON.parse(row.j):undefined;}const value=seq[key];return typeof value==='function'?value.bind(seq):value;}});}
- samplePut(i,value){const eligible=value.reasons.length===0&&value.duration>=1&&value.tps>0?1:0;this.statement('INSERT OR REPLACE INTO samples VALUES(?,?,?,?,?,?)').run(i,encodeSample(value),value.profile,Number.isFinite(value.tps)?value.tps:null,value.duration,eligible);}
+ samplePut(i,value){const tokens=value.outputTokens!==undefined?value.outputTokens:value.responseTokens;const eligible=value.reasons.length===0&&value.duration>=1&&tokens>=30&&value.tps>0?1:0;this.statement('INSERT OR REPLACE INTO samples VALUES(?,?,?,?,?,?)').run(i,encodeSample(value),value.profile,Number.isFinite(value.tps)?value.tps:null,value.duration,eligible);}
  median(table,where='',params=[]){const n=this.statement(`SELECT count(*) n FROM ${table} ${where}`).get(...params).n;if(!n)return null;const column=table==='samples'?'rate':'v';const values=this.statement(`SELECT ${column} v FROM ${table} ${where} ORDER BY ${column} LIMIT ? OFFSET ?`).all(...params,n%2?1:2,Math.floor((n-1)/2));return values.length===1?values[0].v:(values[0].v+values[1].v)/2;}
  classify(){
   this.db.exec('CREATE TABLE IF NOT EXISTS limits(profile TEXT PRIMARY KEY,v REAL);DELETE FROM limits;');
@@ -74,10 +74,12 @@ CREATE TABLE IF NOT EXISTS deviations(v REAL); CREATE INDEX IF NOT EXISTS deviat
   }
   for(const row of this.statement('SELECT i,j FROM samples ORDER BY i').iterate()){
    this.tick();const s=decodeSample(row.j),limit=this.statement('SELECT v FROM limits WHERE profile=?').get(s.profile)?.v;
-   if(!Number.isFinite(s.tps)&&s.duration>0&&s.responseTokens!==null)s.reasons.push('nonfinite-rate');
-   if(s.duration>0&&s.duration<1&&s.responseTokens>0&&s.toolOnly&&s.ttft>=2&&s.ttft/s.duration>=20)s.reasons.push('short-tool-window');
+   const tokens=s.outputTokens!==undefined?s.outputTokens:s.responseTokens;
+   if(!Number.isFinite(s.tps)&&s.duration>0&&tokens!==null)s.reasons.push('nonfinite-rate');
+   if(s.duration>0&&s.duration<1&&tokens>0&&s.toolOnly&&s.ttft>=2&&s.ttft/s.duration>=20)s.reasons.push('short-tool-window');
    s.outlier=limit!==undefined&&s.tps>limit;if(s.outlier&&s.duration<1&&!s.reasons.length)s.reasons.push('short-outlier');
-   s.status=s.reasons.length?'unreliable':s.responseTokens===null||!(s.duration>0)?'missing':'ok';this.samplePut(row.i,s);
+   if(s.duration>0&&tokens!==null&&(s.duration<1||tokens<30))s.reasons.push('short-window');
+   s.status=s.reasons.length?'unreliable':tokens===null||!(s.duration>0)?'missing':'ok';this.samplePut(row.i,s);
   }
  }
  toolSeconds(){let start=null,end=null,total=0;for(const {a,b} of this.statement('SELECT a,b FROM intervals ORDER BY a,b').iterate()){this.tick();if(start===null){start=a;end=b;}else if(a<=end)end=Math.max(end,b);else{total+=end-start;start=a;end=b;}}return (total+(start===null?0:end-start))/1000;}

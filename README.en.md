@@ -223,9 +223,10 @@ The stable internal plugin ID remains `antigravity-pulse` for compatibility with
 | Context window | Latest request-start `estimatedTokensUsed` / `maxContextTokens`; unknown capacity stays unavailable |
 | Cache hit | Cached-read tokens divided by uncached input + cache reads + cache writes; token-weighted across requests |
 | Token total | Normalized total input plus output tokens, including thinking output |
-| Session TPS | Sum of response tokens from valid requests divided by their total streaming duration |
-| Last-request TPS | Response tokens divided by streaming duration for the latest request; uncertain or missing timing stays unavailable |
-| TTFT | Average time to first token; excluded from response streaming TPS |
+| Session decode TPS | Sum of total output tokens (including thinking) from qualified requests divided by their total streaming duration |
+| Last-request TPS | Total output tokens divided by streaming duration for the latest qualified request; uncertain, short-window or missing timing stays unavailable |
+| E2E speed | Total output tokens divided by `(TTFT + streamingDuration)` across qualified requests; reported separately from pure decode TPS |
+| TTFT | Time to first streamed/thinking token (not first answer token); shown as session P50 median and latest request |
 | Model time | TTFT plus streaming duration across requests |
 | Tool time | Union of tool execution intervals; overlapping time counted once |
 | Five-hour / weekly remaining | Account-provided `remainingFraction`; not a currency balance |
@@ -233,15 +234,15 @@ The stable internal plugin ID remains `antigravity-pulse` for compatibility with
 
 Request metrics update after requests finish, with a poll about every 2.2 seconds. This is not a per-token instantaneous speed meter. Quotas refresh every 60 seconds; countdowns tick every second.
 Antigravity normalizes `inputTokens` to uncached input even for Gemini; these are not upstream prompt-token counters. Cache writes are not hits. Compact cards show readable counters and use a dash for unavailable values. Calculation notes, request-coverage counts and inequality prefixes are kept out of the card. Internally, partial/unknown coverage remains tracked: readable sums may omit missing usage and are not a complete account bill; cache hit rate includes only validated input samples, and zero input has no ratio denominator.
-Thinking tokens are separate. If a model does not expose response tokens, the detail card explains the all-output fallback. Requests without valid timing do not contribute to TPS. Missing or disconnected data is labeled accordingly.
+Total `outputTokens` (including thinking) pairs directly with `streamingDuration` because `streamingDuration` spans thinking and visible answer streaming together; if total output is omitted, calculation falls back to `thinkingOutputTokens + responseOutputTokens`, then `responseOutputTokens`. Requests without valid timing do not contribute to TPS. Missing or disconnected data is labeled accordingly.
 
 ### Timing quality
 
-Very high TPS can occur when output arrives in a batch and the recorded stream lasts only milliseconds. A short receipt window may not represent actual model generation time. The plugin checks timing quality before adding a request to session TPS; it never caps speed or invents a longer duration.
+Very high TPS can occur when output arrives in a batch and the recorded stream lasts only milliseconds. A short receipt window may not represent actual model generation time. The plugin checks timing quality before adding a request to session TPS; it never imposes hardcoded speed ceilings (such as 250 or 600 tok/s) or invents a longer duration.
 
-- **Excluded from TPS:** invalid token scopes, conflicting duplicate request records, multiple differing attempt usages without matching timing, and nonfinite rates. A tool-only stream is also treated as uncertain when it lasts under 1 second, follows at least 2 seconds of TTFT, and TTFT is at least 20 times its stream duration.
-- **Same-model check:** with at least five otherwise eligible samples lasting 1 second or more, a short sample above `max(8 × median, median + 12 × MAD)` is excluded. The baseline uses the same model, provider and token basis; MAD is the median absolute deviation.
-- **Retained samples:** ordinary short text and sustained high speeds remain eligible. A high number alone is not enough to reject a sustained sample. Uncertain requests still contribute their reported token and cache usage; excluding their rate does not delete the request.
+- **Excluded from TPS:** invalid token scopes, conflicting duplicate request records, multiple differing attempt usages without matching timing, nonfinite rates, and any short-window or low-output sample with `streamingDuration < 1.0s` or `outputTokens < 30` (`short-window`).
+- **Additional diagnostics:** tool-only streams under 1 second with TTFT ≥ 2 seconds and TTFT ≥ 20× stream duration (`short-tool-window`), plus short outliers above `max(8 × median, median + 12 × MAD)` of at least five qualified same-model/provider/basis samples (`short-outlier`).
+- **Retained samples:** sustained high speeds (`streamingDuration >= 1.0s` and `outputTokens >= 30`) remain eligible and never hit artificial caps. Uncertain or short-window requests still contribute their reported token, cache, and TTFT values; excluding their rate does not delete the request.
 - **Display and saved data:** an uncertain latest request shows **Timing uncertain**, without substituting the preceding request's speed. If no samples qualify, TPS is unavailable. Old saved rates await recalculation from the complete local trajectory; token/cache/context data is retained. Reloading does not restore the old unvalidated TPS.
 
 These are conservative checks on host timing summaries, not proof of buffering. The current local API does not expose a chunk timeline, so missing server generation time cannot be reconstructed. The interface keeps the calculation basis concise; filtering rules are documented here. Desktop and standalone IDE share these rules. See [timing policy and limitations](docs/TPS.md), informed by DSH discussions [#7960](https://github.com/deepseek-ai/deepseek-harness/discussions/7960) and [#6129](https://github.com/deepseek-ai/deepseek-harness/discussions/6129).
