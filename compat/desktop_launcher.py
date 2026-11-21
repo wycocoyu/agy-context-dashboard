@@ -163,6 +163,7 @@ def _darwin_script(bundle: Path) -> str:
     debug_flags = ' '.join(DEBUG_ARGS)
     return (
         '#!/bin/sh\n'
+        '# X-Antigravity-Pulse-Managed=true\n'
         'set -u\n'
         'unset ELECTRON_RUN_AS_NODE\n'
         "for _ag_var in $(env | awk -F= '/^ANTIGRAVITY_[A-Za-z0-9_]*=/ {print $1}'); do\n"

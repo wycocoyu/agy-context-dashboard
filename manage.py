@@ -400,7 +400,7 @@ def main():
     p.add_argument('--app-path', type=Path, help='Path to the desktop app resources/app.asar for a custom installation')
     sub.add_parser('uninstall-launcher', help='Remove the desktop debug-port launcher shortcut')
     p = sub.add_parser('launch', help='Launch Antigravity desktop with the loopback debug port enabled')
-    p.add_argument('--relaunch', action='store_true', help='Quit any running Antigravity instance before launching')
+    p.add_argument('--relaunch', '--restart', action='store_true', help='Quit any running Antigravity instance before launching')
     p.add_argument('--exe', type=Path, help='Path to the Antigravity Desktop executable')
     p.add_argument('--workspace', type=Path, help='Optional workspace path to open')
     p.add_argument('--app-path', type=Path, help='Path to the desktop app resources/app.asar for a custom installation')

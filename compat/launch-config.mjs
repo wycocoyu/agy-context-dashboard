@@ -1,13 +1,16 @@
 // User-owned desktop launch configuration and host archive inspection.
 import { execFile } from 'node:child_process';
-import { lstat, mkdir, open, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, open, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve, win32 } from 'node:path';
+import { basename, dirname, join, resolve, win32 } from 'node:path';
 
 export const DEBUG_PORT_FLAG = '--remote-debugging-port=0';
 export const DEBUG_ADDRESS_FLAG = '--remote-debugging-address=127.0.0.1';
 export const DEBUG_ARGS = [DEBUG_PORT_FLAG, DEBUG_ADDRESS_FLAG];
 export const DESKTOP_MANAGED_MARKER = 'X-Antigravity-Pulse-Managed=true';
+export const MACOS_LAUNCHER_NAME = 'Antigravity (Debug).app';
+export const MACOS_LAUNCHER_BUNDLE_ID = 'io.github.wycocoyu.agy-context-dashboard.launcher';
+export const MACOS_MANAGED_PLIST_KEY = 'XAntigravityPulseManaged';
 
 const archiveCache = new Map();
 
@@ -277,6 +280,317 @@ function linuxDesktopPaths({ home = homedir(), env = process.env, systemDirs } =
   };
 }
 
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function xmlEscape(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export function macosAppBundle(pathLike) {
+  if (!pathLike || typeof pathLike !== 'string') return null;
+  let current = resolve(pathLike);
+  while (true) {
+    if (basename(current).toLowerCase().endsWith('.app')) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function macosLauncherLayout(home = homedir()) {
+  const bundle = join(home, 'Applications', MACOS_LAUNCHER_NAME);
+  const contents = join(bundle, 'Contents');
+  const macosDir = join(contents, 'MacOS');
+  const resourcesDir = join(contents, 'Resources');
+  return {
+    appsDir: dirname(bundle),
+    bundle,
+    contents,
+    macosDir,
+    resourcesDir,
+    plistPath: join(contents, 'Info.plist'),
+    launcherPath: join(macosDir, 'launcher'),
+  };
+}
+
+async function hasLinkedMacosPath(layout) {
+  const checks = [
+    layout.appsDir,
+    layout.bundle,
+    layout.contents,
+    layout.macosDir,
+    layout.resourcesDir,
+    layout.plistPath,
+    layout.launcherPath,
+  ];
+  for (const target of checks) {
+    if (await isLink(target)) return true;
+  }
+  return false;
+}
+
+async function isRegularFile(filePath) {
+  if (await isLink(filePath)) return false;
+  try { return (await stat(filePath)).isFile(); } catch { return false; }
+}
+
+async function isRegularDir(dirPath) {
+  if (await isLink(dirPath)) return false;
+  try { return (await stat(dirPath)).isDirectory(); } catch { return false; }
+}
+
+async function isExecutableFile(filePath) {
+  if (!await isRegularFile(filePath)) return false;
+  if (process.platform === 'win32') return true;
+  try { return ((await stat(filePath)).mode & 0o111) !== 0; } catch { return false; }
+}
+
+function parseMacosPlistMetadata(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length === 0) {
+    return { valid: false, managed: false, bundleId: null, executable: null };
+  }
+  if (buf.subarray(0, 6).toString('ascii') === 'bplist') {
+    const hasBundleId = buf.includes(MACOS_LAUNCHER_BUNDLE_ID);
+    const hasManagedKey = buf.includes(MACOS_MANAGED_PLIST_KEY);
+    return {
+      valid: true,
+      managed: hasBundleId || hasManagedKey,
+      bundleId: hasBundleId ? MACOS_LAUNCHER_BUNDLE_ID : null,
+      executable: buf.includes('launcher') ? 'launcher' : null,
+    };
+  }
+  const text = buf.toString('utf8');
+  const validShape = text.includes('<plist') && text.includes('<dict');
+  const bundleIdMatch = text.match(/<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>([^<]*)<\/string>/);
+  const exeMatch = text.match(/<key>\s*CFBundleExecutable\s*<\/key>\s*<string>([^<]*)<\/string>/);
+  const bundleId = bundleIdMatch ? bundleIdMatch[1].trim() : null;
+  const executable = exeMatch ? exeMatch[1].trim() : null;
+  const hasManagedKey = new RegExp(`<key>\\s*${MACOS_MANAGED_PLIST_KEY}\\s*</key>\\s*<true\\s*/>`).test(text);
+  const managed = bundleId ? bundleId === MACOS_LAUNCHER_BUNDLE_ID : hasManagedKey;
+  const valid = validShape && (executable === null || executable === 'launcher');
+  return { valid, managed, bundleId, executable };
+}
+
+function isValidMacosLauncherScript(text) {
+  if (typeof text !== 'string' || !text.startsWith('#!')) return false;
+  const codeLines = text.split(/\r?\n/).filter(line => {
+    const trimmed = line.trim();
+    return trimmed && !trimmed.startsWith('#');
+  });
+  const body = codeLines.join('\n');
+  return body.includes('--remote-debugging-port')
+    && body.includes('--remote-debugging-address')
+    && (/\b(?:open|exec)\b/i.test(body) || body.includes('Antigravity'));
+}
+
+function extractBundleFromScript(script) {
+  if (typeof script !== 'string') return null;
+  const match = script.match(/^\s*(?:APP_)?BUNDLE=(.+)$/m);
+  if (!match) return null;
+  const rhs = match[1].trim();
+  if (rhs.startsWith("'")) {
+    let out = '';
+    for (let i = 1; i < rhs.length; i++) {
+      if (rhs.startsWith("'\\''", i)) { out += "'"; i += 3; continue; }
+      if (rhs[i] === "'") return out || null;
+      out += rhs[i];
+    }
+    return null;
+  }
+  if (rhs.startsWith('"')) {
+    const end = rhs.indexOf('"', 1);
+    return end > 1 ? rhs.slice(1, end) : null;
+  }
+  return rhs.split(/\s+#/)[0].trim() || null;
+}
+
+async function macosTargetApp({ appResources, home = homedir(), env = process.env, settingsPath, systemAppDirs, existingScript } = {}) {
+  const candidates = [];
+  const addFrom = value => {
+    const bundle = macosAppBundle(value);
+    if (bundle && !candidates.includes(bundle)) candidates.push(bundle);
+  };
+  if (appResources) addFrom(appResources);
+  if (env.AG_PULSE_APP_ASAR) addFrom(env.AG_PULSE_APP_ASAR);
+  if (env.AG_PULSE_APP_RESOURCES) addFrom(env.AG_PULSE_APP_RESOURCES);
+  if (settingsPath) {
+    try {
+      const saved = JSON.parse((await readFile(settingsPath, 'utf8')).replace(/^\uFEFF/, ''));
+      if (typeof saved?.appResources === 'string' && saved.appResources) addFrom(saved.appResources);
+    } catch {}
+  }
+  const fromScript = extractBundleFromScript(existingScript);
+  if (fromScript) addFrom(fromScript);
+  const roots = systemAppDirs || ['/Applications', join(home, 'Applications')];
+  for (const root of roots) addFrom(join(root, 'Antigravity.app'));
+  for (const candidate of candidates) {
+    if (!await isRegularDir(candidate)) continue;
+    const exe = join(candidate, 'Contents', 'MacOS', 'Antigravity');
+    const asar = join(candidate, 'Contents', 'Resources', 'app.asar');
+    if (await isRegularFile(exe) || await isRegularFile(asar)) return candidate;
+  }
+  return null;
+}
+
+async function macosIconSource(targetApp) {
+  const resources = join(targetApp, 'Contents', 'Resources');
+  if (!await isRegularDir(resources)) return null;
+  for (const preferred of ['icon.icns', 'electron.icns', 'Antigravity.icns', 'app.icns']) {
+    const candidate = join(resources, preferred);
+    if (await isRegularFile(candidate)) return candidate;
+  }
+  try {
+    const entries = (await readdir(resources)).sort();
+    for (const entry of entries) {
+      if (!entry.toLowerCase().endsWith('.icns')) continue;
+      const candidate = join(resources, entry);
+      if (await isRegularFile(candidate)) return candidate;
+    }
+  } catch {}
+  return null;
+}
+
+export function renderMacosLauncherPlist(iconName = null) {
+  const iconBlock = iconName ? `  <key>CFBundleIconFile</key>\n  <string>${xmlEscape(iconName)}</string>\n` : '';
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+    + '<plist version="1.0">\n'
+    + '<dict>\n'
+    + '  <key>CFBundleDisplayName</key>\n'
+    + '  <string>Antigravity (Debug)</string>\n'
+    + '  <key>CFBundleExecutable</key>\n'
+    + '  <string>launcher</string>\n'
+    + iconBlock
+    + '  <key>CFBundleIdentifier</key>\n'
+    + `  <string>${MACOS_LAUNCHER_BUNDLE_ID}</string>\n`
+    + '  <key>CFBundleName</key>\n'
+    + '  <string>Antigravity (Debug)</string>\n'
+    + '  <key>CFBundlePackageType</key>\n'
+    + '  <string>APPL</string>\n'
+    + '  <key>NSHighResolutionCapable</key>\n'
+    + '  <true/>\n'
+    + `  <key>${MACOS_MANAGED_PLIST_KEY}</key>\n`
+    + '  <true/>\n'
+    + '</dict>\n'
+    + '</plist>\n'
+  );
+}
+
+export function renderMacosLauncherScript(targetApp) {
+  const posixApp = String(targetApp).replace(/\\/g, '/');
+  const applescriptApp = posixApp.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const quitScript = shQuote(`tell application "${applescriptApp}" to quit`);
+  const debugFlags = `${DEBUG_PORT_FLAG} ${DEBUG_ADDRESS_FLAG}`;
+  return [
+    '#!/bin/sh',
+    `# ${DESKTOP_MANAGED_MARKER}`,
+    'set -u',
+    'unset ELECTRON_RUN_AS_NODE',
+    "for _ag_var in $(env | awk -F= '/^ANTIGRAVITY_[A-Za-z0-9_]*=/ {print $1}'); do",
+    '  unset "$_ag_var"',
+    'done',
+    '',
+    `BUNDLE=${shQuote(posixApp)}`,
+    'TARGET_EXE="$BUNDLE/Contents/MacOS/Antigravity"',
+    '',
+    'MATCHES=$(ps axo pid=,command= | awk -v exe="$TARGET_EXE" \'',
+    '{',
+    '  pid = $1',
+    '  cmd = $0',
+    '  sub(/^[ \\t]*[0-9]+[ \\t]+/, "", cmd)',
+    '  if (substr(cmd, 1, length(exe)) == exe &&',
+    '      (length(cmd) == length(exe) || substr(cmd, length(exe) + 1, 1) == " ") &&',
+    '      index(cmd, "--type=") == 0) {',
+    '    print pid (index(cmd, "--remote-debugging-port") > 0 ? " DEBUG" : " NODEBUG")',
+    '  }',
+    '}\')',
+    '',
+    'if [ -z "$MATCHES" ]; then',
+    `  exec open -a "$BUNDLE" --args ${debugFlags} "$@"`,
+    'fi',
+    '',
+    'case "$MATCHES" in',
+    '  *" DEBUG"*)',
+    '    exec open -a "$BUNDLE"',
+    '    ;;',
+    'esac',
+    '',
+    'if ! osascript -e \'display dialog "Antigravity is already running without --remote-debugging-port.\\n\\nQuit and relaunch Antigravity with debugging enabled?" buttons {"Cancel", "Relaunch"} default button "Relaunch" with title "Antigravity (Debug)"\' >/dev/null 2>&1; then',
+    '  exit 0',
+    'fi',
+    '',
+    'PIDS=$(printf \'%s\\n\' "$MATCHES" | awk \'{print $1}\')',
+    `osascript -e ${quitScript} >/dev/null 2>&1 || true`,
+    '',
+    'ticks=0',
+    'while [ "$ticks" -lt 50 ]; do',
+    '  alive=""',
+    '  for pid in $PIDS; do',
+    '    if kill -0 "$pid" 2>/dev/null; then',
+    '      alive="$alive $pid"',
+    '    fi',
+    '  done',
+    '  if [ -z "$alive" ]; then',
+    '    break',
+    '  fi',
+    '  if [ "$ticks" -eq 40 ]; then',
+    '    for pid in $alive; do',
+    '      kill -TERM "$pid" 2>/dev/null || true',
+    '    done',
+    '  fi',
+    '  sleep 0.2',
+    '  ticks=$((ticks + 1))',
+    'done',
+    '',
+    'for pid in $PIDS; do',
+    '  if kill -0 "$pid" 2>/dev/null; then',
+    '    osascript -e \'display alert "Antigravity did not exit in time" message "Close Antigravity manually and try again." as warning\' >/dev/null 2>&1 || true',
+    '    exit 1',
+    '  fi',
+    'done',
+    '',
+    'sleep 0.3',
+    `exec open -a "$BUNDLE" --args ${debugFlags} "$@"`,
+    '',
+  ].join('\n');
+}
+
+async function isManagedMacosLauncher(layout) {
+  if (!await isRegularDir(layout.bundle) || await hasLinkedMacosPath(layout)) return false;
+  if (await isRegularFile(layout.plistPath)) {
+    try {
+      const plistMeta = parseMacosPlistMetadata(await readFile(layout.plistPath));
+      if (plistMeta.bundleId && plistMeta.bundleId !== MACOS_LAUNCHER_BUNDLE_ID) return false;
+      if (plistMeta.managed) return true;
+    } catch {}
+  }
+  if (await isRegularFile(layout.launcherPath)) {
+    try {
+      const script = await readFile(layout.launcherPath, 'utf8');
+      if (script.includes(DESKTOP_MANAGED_MARKER)) return true;
+    } catch {}
+  }
+  return false;
+}
+
+function defaultExecCodesign(bundle) {
+  if (process.platform !== 'darwin') return Promise.resolve();
+  return new Promise(resolvePromise => {
+    execFile('/usr/bin/codesign', ['--force', '--sign', '-', bundle], { timeout: 10000 }, () => resolvePromise());
+  });
+}
+
+async function atomicTextWrite(filePath, content, mode = 0o644) {
+  await mkdir(dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  await writeFile(tmp, content, { encoding: 'utf8', mode });
+  await chmod(tmp, mode).catch(() => {});
+  await rename(tmp, filePath);
+}
+
 export async function inspectDesktopLaunch({ platform = process.platform, home = homedir(), env = process.env } = {}) {
   if (platform === 'win32') {
     const entrypoints = [];
@@ -303,6 +617,27 @@ export async function inspectDesktopLaunch({ platform = process.platform, home =
       return { configured, supported: true, entrypoints: [userFile] };
     } catch {
       return { configured: false, supported: true, entrypoints: [] };
+    }
+  }
+  if (platform === 'darwin') {
+    const layout = macosLauncherLayout(home);
+    const { bundle, plistPath, launcherPath } = layout;
+    if (await hasLinkedMacosPath(layout) || !await isRegularDir(bundle)) {
+      return { configured: false, supported: true, entrypoints: [] };
+    }
+    if (!await isRegularFile(plistPath) || !await isRegularFile(launcherPath)) {
+      return { configured: false, supported: true, entrypoints: [bundle] };
+    }
+    try {
+      const plistMeta = parseMacosPlistMetadata(await readFile(plistPath));
+      const executableOk = await isExecutableFile(launcherPath);
+      const script = await readFile(launcherPath, 'utf8');
+      const configured = plistMeta.valid
+        && executableOk
+        && isValidMacosLauncherScript(script);
+      return { configured, supported: true, entrypoints: [bundle] };
+    } catch {
+      return { configured: false, supported: true, entrypoints: [bundle] };
     }
   }
   return { configured: false, supported: false, entrypoints: [] };
@@ -353,6 +688,17 @@ async function recordManagedShortcuts(settingsPath, updates) {
   await atomicJsonWrite(settingsPath, settings);
 }
 
+async function recordManagedLaunchField(settingsPath, key, value) {
+  if (!settingsPath) return;
+  let settings = {};
+  try { settings = JSON.parse((await readFile(settingsPath, 'utf8')).replace(/^\uFEFF/, '')); } catch {}
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) settings = {};
+  const managed = settings.managedLaunch && typeof settings.managedLaunch === 'object' ? { ...settings.managedLaunch } : {};
+  managed[key] = value;
+  settings.managedLaunch = managed;
+  await atomicJsonWrite(settingsPath, settings).catch(() => {});
+}
+
 export async function ensureDesktopLaunchConfig({
   platform = process.platform,
   home = homedir(),
@@ -360,6 +706,9 @@ export async function ensureDesktopLaunchConfig({
   settingsPath,
   execPowerShell = defaultExecPowerShell,
   systemDirs,
+  appResources,
+  systemAppDirs,
+  execCodesign = defaultExecCodesign,
 } = {}) {
   const status = await inspectDesktopLaunch({ platform, home, env });
   if (status.configured) return { ...status, repaired: false };
@@ -409,22 +758,75 @@ export async function ensureDesktopLaunchConfig({
     if (source === null) return { configured: false, repaired: false, supported: true, entrypoints: [] };
     const updated = mergeDesktopEntry(source);
     try {
-      await mkdir(dirname(userFile), { recursive: true });
-      const tmp = `${userFile}.${process.pid}.tmp`;
-      await writeFile(tmp, updated, { encoding: 'utf8', mode: 0o644 });
-      await rename(tmp, userFile);
-      if (settingsPath) {
-        let settings = {};
-        try { settings = JSON.parse((await readFile(settingsPath, 'utf8')).replace(/^\uFEFF/, '')); } catch {}
-        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) settings = {};
-        const managed = settings.managedLaunch && typeof settings.managedLaunch === 'object' ? { ...settings.managedLaunch } : {};
-        managed.linuxDesktopFile = userFile;
-        settings.managedLaunch = managed;
-        await atomicJsonWrite(settingsPath, settings).catch(() => {});
-      }
+      await atomicTextWrite(userFile, updated, 0o644);
+      await recordManagedLaunchField(settingsPath, 'linuxDesktopFile', userFile);
       return { configured: true, repaired: true, supported: true, entrypoints: [userFile] };
     } catch {
       return { configured: false, repaired: false, supported: true, entrypoints: [] };
+    }
+  }
+
+  if (platform === 'darwin') {
+    const layout = macosLauncherLayout(home);
+    const { bundle, resourcesDir, plistPath, launcherPath } = layout;
+    if (await hasLinkedMacosPath(layout) || !await isRegularDir(bundle)) {
+      return { configured: false, repaired: false, supported: true, entrypoints: [] };
+    }
+    if (!await isManagedMacosLauncher(layout)) {
+      return { configured: false, repaired: false, supported: true, entrypoints: [bundle] };
+    }
+
+    let plistMeta = null;
+    if (await isRegularFile(plistPath)) {
+      try { plistMeta = parseMacosPlistMetadata(await readFile(plistPath)); } catch {}
+    }
+    let existingScript = null;
+    if (await isRegularFile(launcherPath)) {
+      try { existingScript = await readFile(launcherPath, 'utf8'); } catch {}
+    }
+    const plistNeedsRepair = !plistMeta?.valid || !plistMeta?.managed;
+    const scriptValid = existingScript !== null && isValidMacosLauncherScript(existingScript);
+    const execOk = existingScript !== null && await isExecutableFile(launcherPath);
+
+    const targetApp = await macosTargetApp({
+      appResources, home, env, settingsPath, systemAppDirs, existingScript,
+    });
+    if (!scriptValid && !targetApp) {
+      return { configured: false, repaired: false, supported: true, entrypoints: [bundle] };
+    }
+
+    try {
+      let mutated = false;
+      if (plistNeedsRepair) {
+        let iconName = null;
+        const iconDst = join(resourcesDir, 'icon.icns');
+        const iconSrc = targetApp ? await macosIconSource(targetApp) : null;
+        if (iconSrc && !await isLink(iconDst)) {
+          await mkdir(resourcesDir, { recursive: true });
+          await copyFile(iconSrc, iconDst);
+          iconName = 'icon.icns';
+        } else if (await isRegularFile(iconDst)) {
+          iconName = 'icon.icns';
+        }
+        await atomicTextWrite(plistPath, renderMacosLauncherPlist(iconName), 0o644);
+        mutated = true;
+      }
+      if (!scriptValid) {
+        await atomicTextWrite(launcherPath, renderMacosLauncherScript(targetApp), 0o755);
+        mutated = true;
+      } else if (!execOk) {
+        await chmod(launcherPath, 0o755);
+        mutated = true;
+      }
+      if (!mutated) {
+        return { configured: status.configured, repaired: false, supported: true, entrypoints: [bundle] };
+      }
+      await execCodesign(bundle).catch(() => {});
+      await recordManagedLaunchField(settingsPath, 'macosLauncherApp', bundle);
+      const after = await inspectDesktopLaunch({ platform, home, env });
+      return { ...after, repaired: after.configured };
+    } catch {
+      return { configured: false, repaired: false, supported: true, entrypoints: [bundle] };
     }
   }
 

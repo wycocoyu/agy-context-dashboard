@@ -92,7 +92,10 @@ const syncLaunchConfig = async (force = false) => {
   }
   if (force || !cachedLaunch || Date.now() - lastLaunchRepairAt >= 60000) {
     lastLaunchRepairAt = Date.now();
-    cachedLaunch = await ensureDesktopLaunchConfig({ settingsPath: paths.settings });
+    cachedLaunch = await ensureDesktopLaunchConfig({
+      settingsPath: paths.settings,
+      appResources: resolveHostResources(),
+    });
   }
   return cachedLaunch;
 };

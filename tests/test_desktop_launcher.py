@@ -490,7 +490,10 @@ class DesktopLauncherTests(unittest.TestCase):
             with patch.object(manager, 'desktop_launcher', return_value=fake_mod), \
                  patch('sys.argv', ['manage.py', 'launch', '--relaunch', '--app-path', str(app_asar)]):
                 self.assertEqual(manager.main(), 0)
-            self.assertEqual(launch_calls, [(app_asar.resolve(), True)])
+            with patch.object(manager, 'desktop_launcher', return_value=fake_mod), \
+                 patch('sys.argv', ['manage.py', 'launch', '--restart', '--app-path', str(app_asar)]):
+                self.assertEqual(manager.main(), 0)
+            self.assertEqual(launch_calls, [(app_asar.resolve(), True), (app_asar.resolve(), True)])
 
             with patch('sys.argv', ['manage.py', 'install', '--with-launcher', '--app-path', str(app_asar)]):
                 self.assertEqual(manager.main(), 0)

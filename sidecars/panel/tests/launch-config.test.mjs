@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   DESKTOP_MANAGED_MARKER,
+  MACOS_LAUNCHER_BUNDLE_ID,
+  MACOS_LAUNCHER_NAME,
+  MACOS_MANAGED_PLIST_KEY,
   ensureDesktopLaunchConfig,
   inspectDesktopLaunch,
   inspectHostArchive,
@@ -12,6 +16,8 @@ import {
   mergeDebugArguments,
   mergeDesktopEntry,
   parseLnkBuffer,
+  renderMacosLauncherPlist,
+  renderMacosLauncherScript,
 } from '../../../compat/launch-config.mjs';
 import { RuntimeUi } from '../../../compat/runtime-ui.mjs';
 
@@ -166,6 +172,151 @@ test('ensureDesktopLaunchConfig configures Linux desktop file without overwritin
     assert.equal((await inspectDesktopLaunch({ platform: 'linux', home, env: {} })).configured, true);
 
     assert.equal(mergeDesktopEntry('[Desktop Entry]\nExec=/bin/ag --remote-debugging-port=0 %U\n').includes(DESKTOP_MANAGED_MARKER), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('inspectDesktopLaunch and ensureDesktopLaunchConfig self-heal managed macOS Antigravity (Debug).app without overwriting custom bundles', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ag-pulse-macos-'));
+  try {
+    const home = join(dir, 'home');
+    const sysApps = join(dir, 'Applications');
+    const targetApp = join(sysApps, 'Antigravity.app');
+    const settingsPath = join(home, 'Library', 'Application Support', 'AntigravityPulse', 'settings.json');
+    await mkdir(join(targetApp, 'Contents', 'MacOS'), { recursive: true });
+    await mkdir(join(targetApp, 'Contents', 'Resources'), { recursive: true });
+    await writeFile(join(targetApp, 'Contents', 'MacOS', 'Antigravity'), 'bin');
+    await writeFile(join(targetApp, 'Contents', 'Resources', 'app.asar'), 'asar');
+    await writeFile(join(targetApp, 'Contents', 'Resources', 'icon.icns'), 'ICNS');
+
+    let codesignCalls = 0;
+    const execCodesign = async () => { codesignCalls++; };
+
+    // Opt-in launcher absent: never auto-creates an unrequested bundle.
+    assert.deepEqual(await inspectDesktopLaunch({ platform: 'darwin', home, env: {} }), {
+      configured: false, supported: true, entrypoints: [],
+    });
+    assert.deepEqual(await ensureDesktopLaunchConfig({
+      platform: 'darwin', home, env: {}, settingsPath, systemAppDirs: [sysApps], execCodesign,
+    }), { configured: false, repaired: false, supported: true, entrypoints: [] });
+    assert.equal(codesignCalls, 0);
+
+    const bundle = join(home, 'Applications', MACOS_LAUNCHER_NAME);
+    const plistPath = join(bundle, 'Contents', 'Info.plist');
+    const launcherPath = join(bundle, 'Contents', 'MacOS', 'launcher');
+    await mkdir(join(bundle, 'Contents', 'MacOS'), { recursive: true });
+    await writeFile(plistPath, [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<plist version="1.0"><dict>',
+      `  <key>CFBundleIdentifier</key><string>${MACOS_LAUNCHER_BUNDLE_ID}</string>`,
+      '  <key>CFBundleExecutable</key><string>launcher</string>',
+      '</dict></plist>',
+    ].join('\n'));
+    await writeFile(launcherPath, renderMacosLauncherScript(targetApp), { mode: 0o755 });
+    await chmod(launcherPath, 0o755).catch(() => {});
+
+    // Healthy bundle installed by desktop_launcher.py uses fast path with zero writes/codesign.
+    assert.deepEqual(await inspectDesktopLaunch({ platform: 'darwin', home, env: {} }), {
+      configured: true, supported: true, entrypoints: [bundle],
+    });
+    assert.deepEqual(await ensureDesktopLaunchConfig({
+      platform: 'darwin', home, env: {}, settingsPath, systemAppDirs: [sysApps], execCodesign,
+    }), { configured: true, repaired: false, supported: true, entrypoints: [bundle] });
+    assert.equal(codesignCalls, 0);
+
+    // Missing launcher script inside managed bundle is self-healed.
+    await rm(launcherPath);
+    assert.deepEqual(await inspectDesktopLaunch({ platform: 'darwin', home, env: {} }), {
+      configured: false, supported: true, entrypoints: [bundle],
+    });
+    const healedMissing = await ensureDesktopLaunchConfig({
+      platform: 'darwin',
+      home,
+      env: {},
+      settingsPath,
+      appResources: join(targetApp, 'Contents', 'Resources'),
+      systemAppDirs: [sysApps],
+      execCodesign,
+    });
+    assert.deepEqual(healedMissing, { configured: true, repaired: true, supported: true, entrypoints: [bundle] });
+    assert.equal(codesignCalls, 1);
+    const healedScript = await readFile(launcherPath, 'utf8');
+    assert.ok(healedScript.includes(DESKTOP_MANAGED_MARKER));
+    assert.ok(healedScript.includes('--remote-debugging-port=0 --remote-debugging-address=127.0.0.1'));
+    if (process.platform !== 'win32') {
+      assert.ok(((await stat(launcherPath)).mode & 0o111) !== 0);
+      const syntax = spawnSync('/bin/sh', ['-n', launcherPath], { encoding: 'utf8' });
+      assert.equal(syntax.status, 0, syntax.stderr);
+    }
+    const saved = JSON.parse(await readFile(settingsPath, 'utf8'));
+    assert.equal(saved.managedLaunch.macosLauncherApp, bundle);
+
+    // Broken launcher script (debug flags stripped or only in comments) is self-healed.
+    await writeFile(launcherPath, '#!/bin/sh\n# --remote-debugging-port=0 --remote-debugging-address=127.0.0.1\nopen -a /Applications/Antigravity.app\n', { mode: 0o755 });
+    assert.equal((await inspectDesktopLaunch({ platform: 'darwin', home, env: {} })).configured, false);
+    const healedBroken = await ensureDesktopLaunchConfig({
+      platform: 'darwin', home, env: {}, settingsPath, systemAppDirs: [sysApps], execCodesign,
+    });
+    assert.deepEqual(healedBroken, { configured: true, repaired: true, supported: true, entrypoints: [bundle] });
+    assert.equal(codesignCalls, 2);
+
+    // Non-executable managed script on POSIX is healed via chmod.
+    if (process.platform !== 'win32') {
+      await chmod(launcherPath, 0o644);
+      assert.equal((await inspectDesktopLaunch({ platform: 'darwin', home, env: {} })).configured, false);
+      const healedPerm = await ensureDesktopLaunchConfig({
+        platform: 'darwin', home, env: {}, settingsPath, systemAppDirs: [sysApps], execCodesign,
+      });
+      assert.deepEqual(healedPerm, { configured: true, repaired: true, supported: true, entrypoints: [bundle] });
+      assert.ok(((await stat(launcherPath)).mode & 0o111) !== 0);
+    }
+
+    // Broken Info.plist inside a script-marked managed bundle is self-healed with icon copy.
+    await writeFile(plistPath, 'corrupted-plist');
+    assert.equal((await inspectDesktopLaunch({ platform: 'darwin', home, env: {} })).configured, false);
+    const healedPlist = await ensureDesktopLaunchConfig({
+      platform: 'darwin', home, env: {}, settingsPath, systemAppDirs: [sysApps], execCodesign,
+    });
+    assert.deepEqual(healedPlist, { configured: true, repaired: true, supported: true, entrypoints: [bundle] });
+    const repairedPlist = await readFile(plistPath, 'utf8');
+    assert.ok(repairedPlist.includes(MACOS_LAUNCHER_BUNDLE_ID));
+    assert.ok(repairedPlist.includes(MACOS_MANAGED_PLIST_KEY));
+    assert.equal(await readFile(join(bundle, 'Contents', 'Resources', 'icon.icns'), 'utf8'), 'ICNS');
+    assert.equal(renderMacosLauncherPlist('icon.icns').includes('<key>CFBundleIconFile</key>'), true);
+
+    // Custom user bundle with same name must never be overwritten.
+    await rm(bundle, { recursive: true, force: true });
+    await mkdir(join(bundle, 'Contents', 'MacOS'), { recursive: true });
+    const customPlist = '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.user.custom</string></dict></plist>';
+    const customScript = '#!/bin/sh\necho custom\n';
+    await writeFile(plistPath, customPlist);
+    await writeFile(launcherPath, customScript, { mode: 0o755 });
+    const unmanaged = await ensureDesktopLaunchConfig({
+      platform: 'darwin', home, env: {}, systemAppDirs: [sysApps], execCodesign,
+    });
+    assert.deepEqual(unmanaged, { configured: false, repaired: false, supported: true, entrypoints: [bundle] });
+    assert.equal(await readFile(plistPath, 'utf8'), customPlist);
+    assert.equal(await readFile(launcherPath, 'utf8'), customScript);
+
+    // Symlinked launcher target is rejected without touching outside files.
+    const outside = join(dir, 'outside.sh');
+    await writeFile(outside, 'keep');
+    await rm(bundle, { recursive: true, force: true });
+    let symlinkCreated = false;
+    try {
+      await symlink(outside, bundle);
+      symlinkCreated = true;
+    } catch {}
+    if (symlinkCreated) {
+      assert.deepEqual(await inspectDesktopLaunch({ platform: 'darwin', home, env: {} }), {
+        configured: false, supported: true, entrypoints: [],
+      });
+      assert.deepEqual(await ensureDesktopLaunchConfig({
+        platform: 'darwin', home, env: {}, systemAppDirs: [sysApps], execCodesign,
+      }), { configured: false, repaired: false, supported: true, entrypoints: [] });
+      assert.equal(await readFile(outside, 'utf8'), 'keep');
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
