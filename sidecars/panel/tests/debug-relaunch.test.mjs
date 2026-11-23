@@ -240,7 +240,7 @@ test('worker strips ELECTRON_RUN_AS_NODE and ANTIGRAVITY_* env, parses payloads,
   assert.equal(macResult.launched, true);
   assert.deepEqual(execCalls, [{ file: 'osascript', args: ['-e', 'tell application "/Applications/Antigravity.app" to quit'] }]);
   assert.deepEqual(kills, [{ pid: 777, signal: 'SIGTERM' }]);
-  assert.equal(sleeps.at(-1), 300);
+  assert.ok(sleeps.includes(300));
   assert.equal(spawns[0].file, 'open');
   assert.deepEqual(spawns[0].args, ['-a', '/Applications/Antigravity.app', '--args', ...DEBUG_ARGS]);
   assert.equal(spawns[0].options.env.ELECTRON_RUN_AS_NODE, undefined);
@@ -284,6 +284,81 @@ test('worker strips ELECTRON_RUN_AS_NODE and ANTIGRAVITY_* env, parses payloads,
   assert.deepEqual(winSpawns[0].args, DEBUG_ARGS);
   assert.equal(winSpawns[0].options.env.ELECTRON_RUN_AS_NODE, undefined);
   assert.equal(winSpawns[0].options.env.ANTIGRAVITY_CSRF_TOKEN, undefined);
+});
+
+test('worker records quit-timeout, early exit, spawn error and healthy start to its log file', async () => {
+  const run = async (platform, child, extra = {}) => {
+    const lines = [];
+    const result = await runRelaunchWorker(
+      { platform, pids: extra.pids ?? [], targetPath: '/opt/Antigravity/antigravity', logFile: '/data/worker.log' },
+      {
+        now: () => 1234,
+        sleepImpl: extra.sleepImpl ?? (() => new Promise(() => {})),
+        killImpl: () => {},
+        isPidAliveImpl: extra.alive ?? (() => false),
+        quitTimeoutMs: 1,
+        pollIntervalMs: 1,
+        postExitDelayMs: 0,
+        spawnImpl: () => child,
+        appendLogImpl: async (file, text) => { assert.equal(file, '/data/worker.log'); lines.push(JSON.parse(text)); },
+      },
+    );
+    return { result, lines };
+  };
+
+  const exited = await run('linux', { on(ev, cb) { if (ev === 'exit') cb(1, null); }, unref() {} });
+  assert.equal(exited.result.launched, true);
+  assert.deepEqual(exited.lines.map(l => [l.outcome, l.code, l.at]), [['exited-early', 1, 1234]]);
+
+  const errored = await run('linux', { on(ev, cb) { if (ev === 'error') cb(Object.assign(new Error('x'), { code: 'ENOENT' })); }, unref() {} });
+  assert.deepEqual(errored.lines.map(l => [l.outcome, l.error]), [['spawn-error', 'ENOENT']]);
+
+  const healthy = await run('linux', { on() {}, unref() {} }, { sleepImpl: async () => {} });
+  assert.deepEqual(healthy.lines.map(l => l.outcome), ['running']);
+
+  const stuck = await run('linux', { on() {}, unref() {} }, { pids: [9], alive: () => true, sleepImpl: async () => {} });
+  assert.equal(stuck.result.reason, 'quit-timeout');
+  assert.deepEqual(stuck.lines.map(l => [l.outcome, l.remainingPids]), [['quit-timeout', [9]]]);
+});
+
+test('scheduleHostRelaunch backs off auto relaunch for 10 minutes after a failed worker run but never blocks manual', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'pulse-relaunch-backoff-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  let currentNow = 1000000;
+  const spawns = [];
+  const common = {
+    dataDir,
+    platform: 'darwin',
+    appResources: '/Applications/Antigravity.app/Contents/Resources',
+    existsSyncImpl: () => true,
+    execFileImpl: async () => ({ stdout: ' 500 /Applications/Antigravity.app/Contents/MacOS/Antigravity\n' }),
+    spawnImpl: (file, args) => { spawns.push(JSON.parse(args[1])); return { on() {}, unref() {} }; },
+    now: () => currentNow,
+  };
+
+  const first = await scheduleHostRelaunch({ ...common, reason: 'auto' });
+  assert.equal(first.scheduled, true);
+  assert.equal(spawns[0].logFile, join(dataDir, 'debug-relaunch-worker.log'));
+
+  await writeFile(spawns[0].logFile, `${JSON.stringify({ at: currentNow + 1000, outcome: 'exited-early', code: 1 })}\n`);
+  currentNow += 30000;
+  const blocked = await scheduleHostRelaunch({ ...common, reason: 'auto', execFileImpl: async () => ({ stdout: ' 600 /Applications/Antigravity.app/Contents/MacOS/Antigravity\n' }) });
+  assert.equal(blocked.scheduled, false);
+  assert.equal(blocked.reason, 'recent-failure');
+  assert.equal(spawns.length, 1);
+
+  const manual = await scheduleHostRelaunch({ ...common, reason: 'manual', execFileImpl: async () => ({ stdout: ' 600 /Applications/Antigravity.app/Contents/MacOS/Antigravity\n' }) });
+  assert.equal(manual.scheduled, true);
+
+  currentNow += 600000;
+  const afterBackoff = await scheduleHostRelaunch({ ...common, reason: 'auto', execFileImpl: async () => ({ stdout: ' 700 /Applications/Antigravity.app/Contents/MacOS/Antigravity\n' }) });
+  assert.equal(afterBackoff.scheduled, true);
+  assert.equal(spawns.length, 3);
+
+  await writeFile(spawns[0].logFile, `${JSON.stringify({ at: currentNow, outcome: 'running' })}\n`);
+  currentNow += 20000;
+  const healthy = await scheduleHostRelaunch({ ...common, reason: 'auto', execFileImpl: async () => ({ stdout: ' 800 /Applications/Antigravity.app/Contents/MacOS/Antigravity\n' }) });
+  assert.notEqual(healthy.reason, 'recent-failure');
 });
 
 test('real worker kills an isolated dummy node PID before spawning target with clean env', { skip: process.platform === 'win32' }, async t => {

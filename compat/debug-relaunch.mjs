@@ -12,6 +12,9 @@ export const DEFAULT_AUTO_COOLDOWN_MS = 60000;
 export const DEFAULT_AUTO_MIN_INTERVAL_MS = 5000;
 export const DEFAULT_MAX_AUTO_ATTEMPTS = 2;
 export const DEFAULT_MANUAL_DEBOUNCE_MS = 5000;
+export const DEFAULT_FAILURE_BACKOFF_MS = 600000;
+export const WORKER_LOG_NAME = 'debug-relaunch-worker.log';
+const FAILED_OUTCOMES = new Set(['quit-timeout', 'spawn-error', 'exited-early']);
 
 const HELPER_OR_NON_MAIN = /(?:--type=|--import=|--headless(?:\s|=|$)|language_server|chrome_crashpad_handler|Antigravity Helper|debug-relaunch-worker\.mjs|sidecars[\\/]+panel[\\/]+main\.mjs)/i;
 const REMOTE_DEBUG_PORT_FLAG = /(?:^|\s)--remote-debugging-port(?:=|\s+)\d+(?:\s|$)/;
@@ -260,6 +263,16 @@ export async function inspectHostDebugState({
   };
 }
 
+async function readLastWorkerEntry(logFile) {
+  try {
+    const lines = (await readFile(logFile, 'utf8')).split(/\r?\n/).filter(Boolean);
+    const last = JSON.parse(lines.at(-1));
+    return last && typeof last === 'object' ? last : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readGuard(guardFile) {
   try {
     const parsed = JSON.parse((await readFile(guardFile, 'utf8')).replace(/^\uFEFF/, ''));
@@ -315,6 +328,7 @@ export async function scheduleHostRelaunch({
   minAutoIntervalMs = DEFAULT_AUTO_MIN_INTERVAL_MS,
   maxAutoAttempts = DEFAULT_MAX_AUTO_ATTEMPTS,
   debounceMs = DEFAULT_MANUAL_DEBOUNCE_MS,
+  failureBackoffMs = DEFAULT_FAILURE_BACKOFF_MS,
   spawnImpl = spawn,
   execFileImpl = execFile,
   existsSyncImpl = existsSync,
@@ -353,7 +367,12 @@ export async function scheduleHostRelaunch({
       ts => typeof ts === 'number' && Number.isFinite(ts) && currentNow >= ts && currentNow - ts < cooldownMs,
     );
 
+    const workerLogFile = join(dataDir, WORKER_LOG_NAME);
     if (normalizedReason === 'auto') {
+      const lastRun = await readLastWorkerEntry(workerLogFile);
+      if (lastRun && FAILED_OUTCOMES.has(lastRun.outcome) && currentNow >= lastRun.at && currentNow - lastRun.at < failureBackoffMs) {
+        return { scheduled: false, reason: 'recent-failure', state };
+      }
       if (samePidSet(state.pids, guard.pids)) {
         return { scheduled: false, reason: elapsed < cooldownMs ? 'cooldown' : 'already-scheduled-for-pids', state };
       }
@@ -370,6 +389,7 @@ export async function scheduleHostRelaunch({
       targetPath: state.targetPath,
       executablePath: state.executablePath,
       debugArgs: [...DEBUG_ARGS],
+      logFile: workerLogFile,
       reason: normalizedReason,
     };
 

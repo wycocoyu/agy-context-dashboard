@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +33,19 @@ function normalizeWorkerPayload(raw) {
   const debugArgs = Array.isArray(raw.debugArgs) && raw.debugArgs.length
     ? raw.debugArgs.map(arg => String(arg))
     : [...DEBUG_ARGS];
-  return { platform, targetPath, pids, debugArgs };
+  const logFile = typeof raw.logFile === 'string' && raw.logFile.trim() && !/[\0\r\n]/.test(raw.logFile) ? raw.logFile : null;
+  return { platform, targetPath, pids, debugArgs, logFile };
+}
+
+export const DEFAULT_EARLY_EXIT_WINDOW_MS = 5000;
+
+function watchEarlyExit(child, windowMs, sleepImpl) {
+  if (typeof child?.on !== 'function') return Promise.resolve({ state: 'running' });
+  return new Promise(resolvePromise => {
+    child.on('error', error => resolvePromise({ state: 'spawn-error', error: String(error?.code || error?.message || error) }));
+    child.on('exit', (code, signal) => resolvePromise({ state: 'exited-early', code, signal }));
+    sleepImpl(windowMs).then(() => resolvePromise({ state: 'running' }));
+  });
 }
 
 export function parseWorkerPayload(argv = process.argv.slice(2), env = process.env) {
@@ -112,9 +125,15 @@ export async function runRelaunchWorker(rawPayload, deps = {}) {
     sigtermFallbackMs = DEFAULT_SIGTERM_FALLBACK_MS,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
     postExitDelayMs = DEFAULT_POST_EXIT_DELAY_MS,
+    earlyExitWindowMs = DEFAULT_EARLY_EXIT_WINDOW_MS,
+    appendLogImpl = (file, text) => appendFile(file, text, 'utf8'),
   } = deps;
   const checkAlive = createPidChecker(killImpl, isPidAliveImpl);
-  const { platform, pids, targetPath, debugArgs } = payload;
+  const { platform, pids, targetPath, debugArgs, logFile } = payload;
+  const record = async entry => {
+    if (!logFile) return;
+    try { await appendLogImpl(logFile, `${JSON.stringify({ at: now(), platform, targetPath, pids, ...entry })}\n`); } catch {}
+  };
 
   if (pids.length > 0) {
     await sendGracefulQuit({ platform, pids, targetPath, execFileImpl, killImpl });
@@ -127,6 +146,7 @@ export async function runRelaunchWorker(rawPayload, deps = {}) {
     while (remaining.length > 0) {
       const elapsed = Math.max(0, now() - started);
       if (elapsed >= quitTimeoutMs || ticks >= maxTicks) {
+        await record({ outcome: 'quit-timeout', remainingPids: remaining });
         return { launched: false, reason: 'quit-timeout', remainingPids: remaining };
       }
       if (platform === 'darwin' && !sigtermSent && (elapsed >= sigtermFallbackMs || ticks >= sigtermTicks)) {
@@ -155,8 +175,9 @@ export async function runRelaunchWorker(rawPayload, deps = {}) {
     ...(platform === 'win32' ? { windowsHide: false } : {}),
     env: cleanEnv,
   });
-  child?.on?.('error', () => {});
   child?.unref?.();
+  const startup = await watchEarlyExit(child, earlyExitWindowMs, sleepImpl);
+  await record({ outcome: startup.state, ...startup, state: undefined });
   return { launched: true, command: launchCommand, args: launchArgs, pidsCleared: pids };
 }
 
