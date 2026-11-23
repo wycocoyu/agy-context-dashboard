@@ -45,9 +45,20 @@ function safeProgress(value){
  if(value.phase==='download'&&Number.isSafeInteger(value.received)&&value.received>=0&&Number.isSafeInteger(value.total)&&value.total>0&&value.total<=64*1024*1024&&value.received<=value.total){result.received=value.received;result.total=value.total;}
  return result;
 }
+function pythonCandidates(platform){
+ if(platform==='win32')return [['python',[]],['py',['-3']],['python3',[]]];
+ const base=[['python3',[]],['python',[]]];
+ if(platform!=='darwin')return base;
+ const versions=['3','3.14','3.13','3.12','3.11','3.10'];
+ for(const dir of ['/opt/homebrew/bin','/usr/local/bin']){
+  for(const version of versions)base.push([`${dir}/python${version}`,[]]);
+ }
+ base.push(['/Library/Frameworks/Python.framework/Versions/Current/bin/python3',[]]);
+ return base;
+}
 export async function runUpdateWorker(worker,args,{spawnImpl=spawn,platform=process.platform,onProgress=null,cwd}={}){
  worker=resolve(worker);
- const candidates=platform==='win32'?[['python',[]],['py',['-3']],['python3',[]]]:[['python3',[]],['python',[]]];
+ const candidates=pythonCandidates(platform);
  const options={stdio:['ignore','pipe','pipe'],windowsHide:true,cwd:resolve(cwd??resolve(dirname(worker),'..'))};
  let unsupported=false,selected;
  for(const [command,prefix] of candidates){

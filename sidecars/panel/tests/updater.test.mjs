@@ -151,6 +151,20 @@ test('unsupported Python falls back during probes; missing and old runtimes rema
  }
 });
 
+test('macOS falls back past old system python3 to Homebrew versioned Python 3.10+ binaries',async()=>{
+ const calls=[];
+ const result=await runUpdateWorker('/plugin/compat/update-worker.py',['check'],{platform:'darwin',spawnImpl:scriptedSpawn(({command,args,respond})=>{
+  calls.push(command);
+  if(command==='python3'){respond({pulseUpdatePython:1,supported:false});return;}
+  if(command==='/opt/homebrew/bin/python3.11'){respond(args.includes('-c')?{pulseUpdatePython:1,supported:true}:{ok:true,result:{hasUpdate:false}});return;}
+  respond(null,127);
+ })});
+ assert.deepEqual(result,{hasUpdate:false});
+ assert.equal(calls.at(-1),'/opt/homebrew/bin/python3.11');
+ assert.equal(calls.filter(c=>c==='/opt/homebrew/bin/python3.11').length,2,'one probe and one worker run');
+ assert.ok(calls.includes('/opt/homebrew/bin/python3'));
+});
+
 test('a selected worker failure is never retried and exposes only allowed static detail',async()=>{
  for(const [response,expectedDetail] of [[{ok:false,code:'install',detail:'permission'},'permission'],[{ok:false,code:'network',detail:'secret proxy URL'},undefined],['not JSON',undefined]]){
   let calls=0;
