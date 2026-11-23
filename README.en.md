@@ -1,18 +1,18 @@
 <div align="center">
 
-<img src="docs/assets/hero.png?v=0.9.7" width="100%" alt="Antigrative Dashboard v0.8.0: current speed, cache and context controls beside the input.">
+<img src="docs/assets/hero.png?v=0.9.8" width="100%" alt="Antigrative Dashboard v0.9.8: speed, cache, quota and context controls beside the input.">
 
 # Agy Context Dashboard (Antigrative Dashboard)
 
-DSH-style Antigravity (`agy`) context window, token throughput, cache hit, and quota dashboard in the model selector row. Hover over context for five-hour and weekly quotas too.<br>
-Keep the summary visible. Hover for the details.
+DSH-style Antigravity (`agy`) context composition, token throughput, cache hit rate, quota pace, and global insights dashboard beside the model selector and inside the companion Side Panel.<br>
+Keep the summary visible. Hover or switch tabs for full details.
 
 [![Version 0.9.8](https://img.shields.io/badge/version-0.9.8-91adff?style=flat-square&labelColor=252936)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/host-Windows%20%7C%20Linux%20%7C%20macOS-83d8b9?style=flat-square&labelColor=252936)](COMPATIBILITY.md)
 [![Antigravity 2.21.1 / 2.33.0+ / 2.34.0+](https://img.shields.io/badge/Antigravity-2.21.1%20%2F%202.33.0%2B%20%2F%202.34.0%2B-c5a0ff?style=flat-square&labelColor=252936)](COMPATIBILITY.md)
 [![MIT](https://img.shields.io/badge/license-MIT-d4d9e6?style=flat-square&labelColor=252936)](LICENSE)
 
-[Preview](#preview) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-status-line) · [Install](#install) · [Enable or remove](#plug-and-unplug) · [Companion Sidebar](#companion-sidebar) · [Compatibility](#compatibility) · [FAQ](#faq) · [中文](README.md)
+[Preview](#preview) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-status-line) · [Install](#install) · [Enable or remove](#plug-and-unplug) · [Companion Sidebar](#companion-sidebar) · [Host UI Chinese & Acknowledgements](#host-ui-chinese-and-acknowledgements) · [Compatibility](#compatibility) · [FAQ](#faq) · [中文](README.md)
 
 </div>
 
@@ -28,36 +28,44 @@ Keep the summary visible. Hover for the details.
 
 ## Preview
 
-<img src="docs/assets/responsive.png?v=0.9.7" width="100%" alt="Current three-icon layout in a narrow main chat and separate statistics beside a subagent input.">
+<img src="docs/assets/responsive.png?v=0.9.8" width="100%" alt="v0.9.8 four-icon compact layout in a narrow main chat and separate statistics beside a subagent input.">
 
 <table>
-<tr><th width="50%">Speed and cache</th><th width="50%">Context and shared quotas</th></tr>
+<tr><th width="50%">Speed and cache pill (explicit hit rate)</th><th width="50%">Split quota pace & 8-category context breakdown</th></tr>
 <tr>
-<td width="50%" valign="top"><img src="docs/assets/speed.png?v=0.9.7" width="100%" alt="Current generation speed detail card"><br><img src="docs/assets/widget.png?v=0.9.7" width="100%" alt="Current token usage and cache detail card"></td>
-<td width="50%" valign="top"><img src="docs/assets/context.png?v=0.9.7" width="100%" alt="Current context, five-hour and weekly quota details, with the saved-language control"></td>
+<td width="50%" valign="top"><img src="docs/assets/speed.png?v=0.9.8" width="100%" alt="Generation speed card: session decode, E2E speed, TTFT (P50 / Latest), peak decode"><br><img src="docs/assets/widget.png?v=0.9.8" width="100%" alt="Token usage and cache card with explicit Cache hit rate pill"></td>
+<td width="50%" valign="top"><img src="docs/assets/quota.png?v=0.9.8" width="100%" alt="Dedicated quota card: five-hour and weekly balances, countdowns and exhaustion forecast"><br><img src="docs/assets/context.png?v=0.9.8" width="100%" alt="Context window card: host 8-category composition, compaction trend, Host UI Chinese and language controls"></td>
 </tr>
 </table>
 
 <table>
-<tr><th width="50%">Daily and weekly activity</th><th width="50%">Usage by model</th></tr>
+<tr><th width="50%">Side Panel · Session view (4-tab navigation)</th><th width="50%">Side Panel · Global Insights view</th></tr>
 <tr>
-<td width="50%"><img src="docs/assets/usage-overview.png?v=0.9.7" width="100%" alt="Current Token usage activity with daily and weekly contribution grids"></td>
-<td width="50%"><img src="docs/assets/usage-details.png?v=0.9.7" width="100%" alt="Current model usage chart with day, week and month controls and theme-adapted colors"></td>
+<td width="50%" valign="top"><img src="docs/assets/panel-session.png?v=0.9.8" width="100%" alt="Companion Side Panel four top-level tabs and Session token usage with USD cost estimate"></td>
+<td width="50%" valign="top"><img src="docs/assets/panel-insights.png?v=0.9.8" width="100%" alt="Global Insights tab: Prompt/Flow credits, total sessions, estimated cost, 7-day trend and activity heatmap"></td>
 </tr>
 </table>
 
-<sub>Desktop widget screenshots with illustrative host layouts and data; these are not IDE screenshots. Main and subagent samples use separate statistics; quotas are account-wide. The 44% context sample uses the latest request-start estimate, not cumulative input. Language choices are at the bottom of context details.</sub>
+<table>
+<tr><th width="50%">Daily and weekly activity</th><th width="50%">Usage by model (with Cache hit column)</th></tr>
+<tr>
+<td width="50%"><img src="docs/assets/usage-overview.png?v=0.9.8" width="100%" alt="Token usage activity with daily and weekly contribution grids"></td>
+<td width="50%"><img src="docs/assets/usage-details.png?v=0.9.8" width="100%" alt="Model usage stacked chart, quota pool pills and model table with Cache hit column"></td>
+</tr>
+</table>
 
-**Keep working. The numbers are already there.**
+<sub>Desktop widget and Side Panel screenshots rendered directly from current source with illustrative host layouts and data; these are not IDE screenshots. Main and subagent samples use separate statistics; quotas are account-wide. The 44% context sample uses the latest request-start estimate, not cumulative input. Language and Host UI Chinese preferences persist across restarts.</sub>
 
-| See the speed | Know your quota | Stay focused |
+**Keep working. Everything is in view across input strip and Side Panel.**
+
+| See the speed | Know your quota & context | Global insights & zero noise |
 | --- | --- | --- |
-| Weighted session TPS, last-request TPS, model and tool time, and time to first token. | Separate Gemini, Argon, and shared 3p Claude quota groups, with five-hour and weekly reset countdowns. | One compact strip beside the model selector. Hover for details; unused TPS stays hidden in new chats. |
+| Session decode TPS, E2E speed, TTFT (P50 / Latest), and model/tool times. | Split Gemini, Argon, and 3p Claude quota pace forecasts alongside 8-category host context composition and trend lines. | Daily/Weekly and By model (with per-model Cache hit) first in Side Panel, plus Global Insights, Session Audit, USD cost estimates, and opt-in Host UI Chinese. |
 
 ### Small details that matter
 
-- **Token usage, DSH-style.** Compact total tokens and cache hit rate; hover for uncached input, cache reads, output, and optional cache writes.
-- **Context and quotas together.** A Codex-style usage percentage; hover for used/remaining fractions, tokens versus capacity, and both quota windows with reset times. Uses the host estimate for the latest request, never cumulative input tokens.
+- **Token usage, DSH-style.** Compact total tokens and an explicit **Cache hit rate:** hero pill (`缓存命中率：` / `快取命中率：`); hover for uncached input, cache reads, output, optional cache writes, and zero-cache miss surge counts (`cacheMissSurges`).
+- **Split quota pace & 8-category context breakdown.** Hover the quota ring for five-hour/weekly balances, reset timers, exhaustion pace forecasts, and sibling groups; hover Context for latest-request occupancy, host 8-category composition (`List`/`Bar`), compaction/checkpoint trends, and Host UI Chinese / language controls.
 - **English or Chinese.** English by default, with one-click switching and a saved preference.
 - **Language survives restarts.** The inline widget and side panel share an atomic user preference file (`AntigravityPulse/preferences.json`), independent of the host's changing local port.
 - **Hover delay and instant transition.** First hover waits 250ms to prevent accidental popups; clicks and keyboard focus open immediately. Moving between metrics stays instant while a card is open or for 350ms after leaving the controls. Leaving early or replacing the conversation/composer cancels a pending popup.
@@ -68,7 +76,7 @@ Keep the summary visible. Hover for the details.
 - **Teamwork compatibility (v0.8.1).** Keep the strip through send/stop/cancel transitions and support deeply nested static agent badges. Conversation IDs come from the current input's DOM owner when available, including switches without a URL change. Hidden/inert or deeper editors are ignored; ambiguous visible inputs/badges are not guessed. Six-level English/Chinese browser fixtures pass, including usage remount and context-to-usage language synchronization. Windows real three-level delegation was checked with independent metrics, return navigation and a generating-state screenshot; this host changed its URL at each level and rendered one composer. Same-URL/six-level DOM cases remain fixture coverage; signed-in Linux/macOS GUI checks are still pending.
 - **Survives updates.** Plugin-owned runtime attachment reconnects after app updates, without modifying the application archive.
 - **Persistent conversations.** TPS and cache statistics are saved separately for each conversation and account; reloads can recover saved statistics.
-- **Compact-window support.** Full statistics reduce to three clickable icons (speed, cache and context) when space is limited. Hover or click for details; language switching stays available in the context card. The strip hides only if the icons cannot fit safely and restores when space returns. Message controls hidden behind the composer do not cause scroll flicker.
+- **Compact-window support.** Full statistics reduce to four clickable icons (speed, cache, quota and context) when space is limited. Hover or click for details; language switching stays available in the context card. The strip hides only if the icons cannot fit safely and restores when space returns. Message controls hidden behind the composer do not cause scroll flicker.
 - **Discoverable language settings.** English is the default. A compact bilingual first-use tip beside context opens the English / 简体中文 / 繁體中文 choices at the bottom of its detail card. The panel and usage window offer the same three choices through their language menu. Preferences survive restarts. Choosing a language or closing the tip saves completion, so it does not return on restart. Closing the tip does not change the language; failed saves offer a retry. Subagent composers do not repeat the tip. Language changes do not change the UTC+8 usage accounting boundaries.
 - **Theme adaptation.** Controls, cards and quota menus follow Antigravity's light/dark mode and custom background, card, text and accent colors, with readable text and OS fallback in standalone previews. Live changes require no restart or conversation reload.
 - **Local collection.** The collector talks to loopback endpoints. It does not upload your metrics to a third-party service.
@@ -82,7 +90,7 @@ in the IDE's Extensions view. No desktop App installation is required.
 Fully quit the IDE, then start it with
 `--remote-debugging-port=0 --remote-debugging-address=127.0.0.1`.
 Add these flags to your IDE shortcut for subsequent launches. Narrow panes show
-three icons; wider panes show values. Hover/click opens the same metric details.
+four icons; wider panes show values. Hover/click opens the same metric details.
 
 Windows IDE **2.5.5** and **2.6.0** (`agy --hub` + nested Webview) are supported with automated verification. Linux/macOS IDE
 have automated coverage; signed-in GUI acceptance is still outstanding.
@@ -186,7 +194,7 @@ Repository: https://github.com/wycocoyu/agy-context-dashboard
 
 ### Open the App side panel
 
-Open the right auxiliary pane using its top-right toggle, then choose **+ → Extensions → Antigrative Dashboard** in that pane's toolbar. The panel keeps speed, cache, context and quota summaries visible. Click a metric card to select its detail tab; pointer departure does not hide it. Long details scroll inside a stable frame. Arrow/Home/End keys select tabs. The Token usage window opened from the input strip is a separate view.
+Open the right auxiliary pane using its top-right toggle, then choose **+ → Extensions → Antigrative Dashboard** in that pane's toolbar. The Side Panel exposes four top-level tabs ordered for quick access: **Daily/Weekly**, **By model** (with quota pool rollups and per-model **Cache hit** column), **Session** (Speed/Cache/Context cards, `Audit` files/commands/steps viewer, USD cost estimate, multi-agent rollup & `cacheMissSurges`), and **Insights** (Prompt/Flow credits, cross-session totals, 7-day trend, heatmap, and project/skill/tool distributions). A quick `汉` header button toggles lossless host UI Chinese translation live without restarting; clicking metric cards selects details without hiding on pointer departure, and the standalone modal can still be launched from the inline cache card.
 
 If Antigravity Desktop `2.33.0+` was launched from a regular Dock/shortcut icon—or lost CLI flags after an automatic `quitAndInstall()` update restart—the inline strip enters the `missing-debug-port` diagnostic state. The Side Panel stays open and displays:
 
@@ -261,7 +269,7 @@ Statistics use separate step and generator-metadata offset reads, with messages 
 
 ## Local Token usage
 
-Open the cache/database icon, then **View token usage**. Today and this month share a compact two-column entry. Activity shows daily/weekly contribution grids; Usage details shows model stacks by day, week or month. Chart colors follow your actual theme and accent; K/M/B summaries use at most one decimal, while tables/tooltips retain full counts.
+Open the **Daily/Weekly** or **By model** top-level tab in the Side Panel, or open the cache/database icon and click **View token usage**. Today and this month share a two-column summary; Activity shows daily/weekly contribution grids; Usage details shows model stacks by day, week or month, quota pool rollup pills (`Gemini` / `Claude / 3p` / `Local`), and a per-model table adding **Cache hit** (`cachedTokens / totalInput`). Large JSON-only ledgers offload automatically to the disk worker under the 192 MiB sidecar heap cap, and false partial/WAL-retry warnings on empty metadata or SQLite WAL locks have been eliminated. Chart colors follow your actual theme and accent; K/M/B summaries use at most one decimal, while tables/tooltips retain full counts.
 
 The first-use introduction explains history import, coverage and privacy. **Got it** saves completion across restarts, language changes and theme changes. Closing the window without acknowledgment keeps the tip for next time; a failed save can be retried.
 
@@ -290,6 +298,16 @@ git clone https://github.com/wycocoyu/agy-project-sidebar.git
 cd agy-project-sidebar
 python3 manage.py install
 ```
+
+## Host UI Chinese and Acknowledgements
+
+The Side Panel `汉` toggle and the inline Context Card **Host UI Chinese** switch enable or disable live **Simplified Chinese localization for the Antigravity Desktop host UI** without patching `app.asar` or restarting the app (using CDP DOM matching + `WeakMap` original-text restoration so turning it off restores exact upstream English strings). Theme skins, font overrides, and sidebar layout rewrites are intentionally excluded, while inline model-selector anchors and user project names are protected from accidental translation.
+
+The built-in dictionary ([`compat/host-i18n-dict.json`](compat/host-i18n-dict.json)) adapts and merges audited entries from three **MIT-licensed** open-source community localization projects:
+
+- [`yiheng8023/antigravity-chinese`](https://github.com/yiheng8023/antigravity-chinese) (MIT): Modular 2.34.0 core dictionary, dynamic regex patterns, and user-content boundaries
+- [`antigravity-cn-community/Antigravity-Chinese-Localization`](https://github.com/antigravity-cn-community/Antigravity-Chinese-Localization) (MIT): Desktop settings phrasing, remote sessions, and model/thinking effort badges
+- [`ruxiayu/antigravity-zh-cn`](https://github.com/ruxiayu/antigravity-zh-cn) (MIT): Context-scoped entries (`New`, `Low`/`Medium`/`High`) and split DOM text-node handling
 
 ## Compatibility
 

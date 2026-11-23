@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/hero-zh.png?v=0.9.7" width="100%" alt="Antigrative Dashboard：最新版速度、缓存和上下文控件，就在输入框旁。">
+<img src="docs/assets/hero-zh.png?v=0.9.8" width="100%" alt="Antigrative Dashboard v0.9.8：生成速度、Token 缓存、剩余额度与上下文控件，就在输入框旁。">
 
 # AGY Context Dashboard (Antigrative Dashboard)
 
-参考 DSH 设计的 Antigravity (`agy`) 上下文窗口、Token 速率、缓存命中率与额度仪表盘；悬停上下文，一并查看上下文、5 小时和周额度详情。<br>
+参考 DSH 设计的 Antigravity (`agy`) 上下文构成、Token 速率、缓存命中率、共享额度与全局洞察仪表盘；悬停胶囊展开精细统计，右侧边栏四视图一站式管理每日/每周活动、按模型用量、当前会话与全局洞察。<br>
 缩略信息常驻；鼠标悬停，才展开详细统计。
 
 [![Version 0.9.8](https://img.shields.io/badge/version-0.9.8-91adff?style=flat-square&labelColor=252936)](CHANGELOG.md)
@@ -12,7 +12,7 @@
 [![Antigravity 2.21.1 / 2.33.0+ / 2.34.0+](https://img.shields.io/badge/Antigravity-2.21.1%20%2F%202.33.0%2B%20%2F%202.34.0%2B-c5a0ff?style=flat-square&labelColor=252936)](COMPATIBILITY.md)
 [![MIT](https://img.shields.io/badge/license-MIT-d4d9e6?style=flat-square&labelColor=252936)](LICENSE)
 
-[看看效果](#看看效果) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-状态栏) · [开始安装](#安装) · [启用与停用](#可插拔) · [配套侧边栏](#配套侧边栏) · [兼容性](#兼容性) · [常见问题](#常见问题) · [English](README.en.md)
+[看看效果](#看看效果) · [IDE](#antigravity-ide) · [CLI](#antigravity-cli-状态栏) · [开始安装](#安装) · [启用与停用](#可插拔) · [配套侧边栏](#配套侧边栏) · [宿主汉化与致谢](#宿主界面汉化与开源致谢) · [兼容性](#兼容性) · [常见问题](#常见问题) · [English](README.en.md)
 
 </div>
 
@@ -29,31 +29,39 @@
 
 ## 看看效果
 
-<img src="docs/assets/responsive-zh.png?v=0.9.7" width="100%" alt="最新版主对话窄窗口三图标布局，以及子代理输入框旁的独立统计。">
+<img src="docs/assets/responsive-zh.png?v=0.9.8" width="100%" alt="v0.9.8 主对话窄窗口四图标布局，以及子代理输入框旁的独立统计。">
 
 <table>
-<tr><th width="50%">生成速度与缓存</th><th width="50%">上下文与共享额度</th></tr>
+<tr><th width="50%">生成速度与 Token 缓存（显式命中率标识）</th><th width="50%">独立额度预测与 8 分类上下文构成</th></tr>
 <tr>
-<td width="50%" valign="top"><img src="docs/assets/speed-zh.png?v=0.9.7" width="100%" alt="最新版生成速度详情卡"><br><img src="docs/assets/widget-zh.png?v=0.9.7" width="100%" alt="最新版 Token 用量与缓存详情卡"></td>
-<td width="50%" valign="top"><img src="docs/assets/context-zh.png?v=0.9.7" width="100%" alt="最新版上下文、5h 和周额度详情，以及持久化语言切换入口"></td>
+<td width="50%" valign="top"><img src="docs/assets/speed-zh.png?v=0.9.8" width="100%" alt="生成速度详情卡：会话解码、端到端速率、TTFT 与解码峰值"><br><img src="docs/assets/widget-zh.png?v=0.9.8" width="100%" alt="Token 用量与缓存详情卡：带显式缓存命中率标识与读取/未缓存/输出明细"></td>
+<td width="50%" valign="top"><img src="docs/assets/quota-zh.png?v=0.9.8" width="100%" alt="独立剩余额度卡：Gemini、Claude、Argon 5h 与周额度倒计时及耗尽预测"><br><img src="docs/assets/context-zh.png?v=0.9.8" width="100%" alt="上下文窗口详情卡：宿主 8 分类构成、压缩次数、趋势折线与宿主界面汉化/语言切换开关"></td>
 </tr>
 </table>
 
 <table>
-<tr><th width="50%">每日 / 每周活动</th><th width="50%">按模型统计用量</th></tr>
+<tr><th width="50%">配套侧边栏 · 当前会话（四视图入口）</th><th width="50%">配套侧边栏 · 全局洞察（跨会话总览）</th></tr>
 <tr>
-<td width="50%"><img src="docs/assets/usage-overview-zh.png?v=0.9.7" width="100%" alt="最新版 Token 用量活动概览，支持每日和每周贡献图"></td>
-<td width="50%"><img src="docs/assets/usage-details-zh.png?v=0.9.7" width="100%" alt="最新版模型用量柱状图，支持天周月切换和主题配色"></td>
+<td width="50%" valign="top"><img src="docs/assets/panel-session-zh.png?v=0.9.8" width="100%" alt="侧边栏四标签页与当前会话 Token 用量、预估费用及缓存命中率"></td>
+<td width="50%" valign="top"><img src="docs/assets/panel-insights-zh.png?v=0.9.8" width="100%" alt="全局洞察视图：Credits 额度、总消耗、预估费用、近 7 天柱状图与热力图"></td>
 </tr>
 </table>
 
-<sub>使用当前控件源码和示意宿主布局渲染，数值为示例。主对话与子代理统计分别展示，账号额度共享；44% 上下文读取最近请求开始时的估计值，不是累计输入。实际插件的数据来自本机 Antigravity 接口，中英文选择会保存。</sub>
+<table>
+<tr><th width="50%">每日 / 每周活动</th><th width="50%">按模型统计用量（含缓存命中率列）</th></tr>
+<tr>
+<td width="50%"><img src="docs/assets/usage-overview-zh.png?v=0.9.8" width="100%" alt="Token 用量活动概览，支持每日和每周贡献图"></td>
+<td width="50%"><img src="docs/assets/usage-details-zh.png?v=0.9.8" width="100%" alt="按模型统计柱状图、额度池汇总及含缓存命中率列的明细表"></td>
+</tr>
+</table>
 
-**不用打开一个监控面板，继续你的对话。**
+<sub>使用当前控件与侧边栏源码和示意宿主布局渲染，数值为示例。主对话与子代理统计分别展示，账号额度共享；44% 上下文读取最近请求开始时的估计值，不是累计输入。实际插件的数据来自本机 Antigravity 接口，中英文及宿主汉化开关会持久化保存。</sub>
 
-| 看见速度 | 知道余额 | 少一点打扰 |
+**不用在多窗口间反复切屏，输入区与侧栏全掌握。**
+
+| 看见速度 | 知道余额与上下文 | 洞察全局且少打扰 |
 | --- | --- | --- |
-| 会话加权 TPS、最近一次请求速率、模型 / 工具用时和首 token 时间。 | Gemini、Argon 与共享 3p Claude 的独立 5h、周余额及重置倒计时。 | 缩略条与模型选择同行；悬停展开；新对话尚无请求时不显示空 TPS。 |
+| 会话解码 TPS、端到端（E2E）速率、首字（P50/最新）与模型 / 工具耗时。 | Gemini、Argon 与 3p Claude 的 5h/周余额、耗尽预测、宿主 8 分类上下文构成与趋势图。 | 每日/每周活动与按模型用量（含缓存命中率）置顶，支持全局洞察、会话审计、USD 费用估算与可切宿主界面汉化。 |
 
 ### 它还处理了这些细节
 
@@ -65,7 +73,7 @@
 - **Teamwork 兼容（v0.8.1）。** 发送、停止、取消状态切换时保留控件，支持深层嵌套和无 `title`／`span` 的静态代理徽章。优先读取当前输入框所属的 DOM 会话标识，URL 不变时也能切换统计；忽略隐藏、禁用及更深层输入框，存在歧义时不随意挂载。中英文六层嵌套浏览器夹具已覆盖用量入口重新挂载和上下文至用量窗口的语言同步。Windows 真实三级委派已检查独立统计、返回主对话与生成中截图；该宿主每层改变 URL、只渲染一个输入框，URL 不变和六层 DOM 场景仍属夹具覆盖。Linux/macOS 登录后界面检查仍待完成。
 - **更新后自动连接。** 适配器保存在用户插件目录，默认安装不修改 App 归档。
 - **对话统计持久化。** 每个账号、每个对话分别保存 tok/s 与 cache，重新加载后可恢复。
-- **适合紧凑窗口。** 完整数值放不下时先保留仪表盘、数据库和上下文圆圈三个图标，仍可悬停或点击查看详情；语言切换保留在上下文卡里。连图标都放不下或确实碰撞宿主按钮时才隐藏，拉宽后恢复。消息按钮滚到输入框后面不会再导致控件消失。
+- **适合紧凑窗口。** 完整数值放不下时先保留速度、缓存、额度环与上下文四个图标，仍可悬停或点击查看详情；语言与宿主汉化开关保留在上下文卡里。连图标都放不下或确实碰撞宿主按钮时才隐藏，拉宽后恢复。消息按钮滚到输入框后面不会再导致控件消失。
 - **跟随主题配色。** 控件、悬浮卡和额度菜单跟随 Antigravity 的深浅模式及自定义背景、卡片、文字和强调色，并保持文字可读；独立预览跟随系统，切换主题无需重启或重新加载对话。
 - **语言设置跨重启保留。** 中英文选择写入独立的 `AntigravityPulse/preferences.json` 用户配置，控件和侧面板共用；不依赖应用每次启动的本地端口。
 - **不上传采集数据。** 后台使用本机 loopback 接口，数值留在你的电脑。
@@ -79,7 +87,7 @@
 完全退出 IDE 后，使用带
 `--remote-debugging-port=0 --remote-debugging-address=127.0.0.1`
 参数的启动方式打开；将参数加到快捷方式目标末尾，后续继续使用该快捷方式。
-窄栏显示三个可交互图标，拉宽后显示数值；悬停或点击即可查看详情。
+窄栏显示四个可交互图标，拉宽后显示数值；悬停或点击即可查看详情。
 
 Windows IDE **2.5.5** 与 **2.6.0** 已适配并提供自动化验证（`agy --hub` 与嵌套 Webview）。Linux/macOS IDE 有自动化覆盖，登录后的
 实机 GUI 验收尚未完成。VS Code、Visual Studio、JetBrains、Zed、Xcode 中的
@@ -178,7 +186,7 @@ python manage.py install --with-launcher
 
 ### 打开 App 侧边栏面板
 
-用右上角开关展开右侧辅助栏，在辅助栏顶部点击 **＋ → Extensions → Antigrative Dashboard**，即可打开插件的常驻仪表盘。速度、缓存、上下文和额度摘要持续显示；点击数据卡切换详情，鼠标移开不再隐藏。长内容在固定详情区内部滚动，也可用方向键／Home／End 选择标签页。输入框控件中打开的「用量统计」是另一个窗口。
+用右上角开关展开右侧辅助栏，在辅助栏顶部点击 **＋ → Extensions → Antigrative Dashboard**，即可打开插件的常驻侧边栏面板。顶部提供四个顶层视图切换，按常用优先级依次为：**每日/每周活动**、**按模型用量**（含额度池汇总与按模型缓存命中率列）、**当前会话**（速度 / 缓存 / 上下文卡片、`审计` 文件与命令弹窗、USD 估算费用与多代理拆解），以及**全局洞察**（Prompt / Flow Credits、跨会话总消耗、近 7 天柱状图、热力图与高频项目/技能/工具排行）。头部另附 `汉` 一键开关，可热切换 Antigravity 宿主界面汉化；点卡片切换详情且移开鼠标不隐藏，也可随时从输入框用量卡打开独立大图窗口。
 
 如果 Antigravity Desktop `2.33.0+` 通过常规 Dock / 快捷方式启动，或因 `quitAndInstall()` 自动更新重启而丢失了命令行参数，内嵌条会进入 `missing-debug-port` 诊断状态。此时侧边栏面板仍可直接打开，并在顶部提示条提供：
 
@@ -208,7 +216,7 @@ python manage.py install --with-launcher
 
 ## 上下文窗口
 
-状态栏显示环形占用指示与百分比；悬停查看“已用 / 剩余”比例、已用 Token 与容量、采样模型，以及 5h 和周额度余额、倒计时、重置时间。额度组选择和刷新也在同一张悬浮卡中。数值来自最近请求开始时的 `contextWindowMetadata.estimatedTokensUsed` / `maxContextTokens`，由宿主估计。不是会话累计输入量，也不是生成中的实时 Token 计数。
+状态栏分别常驻额度环形指示（`5h` / `周`）与上下文占用百分比：悬停额度可查看剩余百分比、重置倒计时与耗尽预测，并在同组或跨组额度间切换；悬停上下文可查看已用 Token 与容量、宿主 8 分类构成、压缩记录与请求趋势。数值来自最近请求开始时的 `contextWindowMetadata.estimatedTokensUsed` / `maxContextTokens`，由宿主估计。不是会话累计输入量，也不是生成中的实时 Token 计数。
 
 缺少容量时显示“容量不可用”，不按模型名称猜测上限。压缩上下文后允许占用下降；切换对话不会沿用上一个对话的数值。上下文与 tok/s、缓存统计一起按账户和对话保存，历史恢复值注明保存时间。
 
@@ -216,9 +224,11 @@ python manage.py install --with-launcher
 
 默认英文。首次使用时，主对话上下文控件旁会出现轻量双语提示；点击后打开详情并定位到底部的 **English / 简体中文 / 繁體中文** 按钮。侧栏和用量窗口也提供三语言菜单，切换不改变 UTC+8 的统计日期。语言选择会保存，之后仍可随时在上下文详情底部切换。选择语言或关闭提示后不再重复引导；关闭提示不会改变已有语言，保存失败会显示提示并允许重试。子代理界面不重复显示首次引导。
 
-缓存卡按 DSH 逻辑显示总 token、缓存命中、未缓存输入、缓存读取与输出；缓存写入非零时显示额外一行。
+缓存卡按 DSH 逻辑展示总 Token、带显式前缀的 **缓存命中率：**（`Cache hit rate:` / `快取命中率：`）蓝色胶囊、缓存读取、未缓存输入与输出；缓存写入非零时额外展示一行，并在检测到 `cacheRead === 0` 且未缓存输入 `>= 100K` 时在多代理拆分中记录零缓存未命中峰值（`cacheMissSurges`）。
 
-Antigravity 的 `inputTokens` 是未缓存输入。缓存率 = 缓存读取 ÷（未缓存输入 + 缓存读取 + 缓存写入），不是把缓存写入算作命中。总 token = 总输入 + 输出。
+Antigravity 的 `inputTokens` 是未缓存输入。缓存命中率 = 缓存读取 ÷（未缓存输入 + 缓存读取 + 缓存写入），按请求输入总量加权，不把缓存写入算作命中；`总 Token = 总输入 + 输出`。
+
+上下文卡与额度卡已拆分为独立胶囊：额度卡集中呈现 `5h` / `周额度` 进度、剩余时间预测与同账号其他额度组；上下文卡展示宿主 `8` 分类精确构成（清单/条形双视图、定制注入明细、高负载工具 `>= 20K`/`>= 50K` 告警）、压缩/检查点趋势折线图以及语言与宿主汉化开关。
 
 ## 数据如何计算
 
@@ -265,7 +275,7 @@ Antigravity 的 `inputTokens` 是未缓存输入。缓存率 = 缓存读取 ÷�
 
 ## 本地 Token 用量统计
 
-打开缓存 / 数据库图标，点击「查看用量统计」。入口以两列展示今日和本月用量；活动概览提供每日 / 每周贡献图，用量详情提供按模型区分的天、周、月柱状图。模型颜色跟随实际主题和强调色；K/M/B 摘要最多显示一位小数，表格与提示保留完整数值。
+在侧边栏顶部的**每日/每周活动**、**按模型用量**页签，或点击缓存卡的「查看用量统计」均可查看完整本机统计。活动概览提供每日 / 每周贡献热力图；按模型统计提供日、周、月堆叠柱状图、上方额度池汇总条（`Gemini` / `Claude / 3p` / `本地`），以及包含**总 Token、未缓存输入、缓存读取、缓存命中率、缓存写入与输出**的明细表。大体积纯 JSON 账本会自动下沉至磁盘 worker，防止突破 192 MiB 内存限制，同时已消除空元数据与 SQLite WAL 重试带来的虚假局部警告。图表颜色跟随当前主题和强调色；K/M/B 摘要最多保留一位小数，表格与悬停提示保留精确数值。
 
 首次使用提示说明历史导入、统计范围与隐私。点击「知道了」后保存完成状态，重启、换语言、换主题都不会重复弹出。直接关闭窗口则保留提示；保存失败可以重试。
 
@@ -295,6 +305,16 @@ cd agy-project-sidebar
 python3 manage.py install
 ```
 
+## 宿主界面汉化与开源致谢
+
+侧边栏顶部 `汉` 按钮与内嵌上下文卡底部的「宿主界面汉化」开关支持一键开启/关闭 **Antigravity 桌面宿主界面的简体中文翻译**（无侵入 CDP 实时渲染 + `WeakMap` 原文缓存，无需修改 `app.asar` 或重启客户端，关闭开关即无损还原原始英文文本），并且不包含任何第三方皮肤、主题色覆写或侧栏布局改动；同时保护模型选择器锚点与用户自定义项目名称不被误译。
+
+本插件的宿主界面汉化词典（`compat/host-i18n-dict.json`）在遵循各自开源许可的前提下整合、融合了以下三套 **MIT** 社区开源项目，在此致谢：
+
+- [`yiheng8023/antigravity-chinese`](https://github.com/yiheng8023/antigravity-chinese)（MIT）：2.34.0 主力模块化词库基底、动态正则规则与用户内容边界保护
+- [`antigravity-cn-community/Antigravity-Chinese-Localization`](https://github.com/antigravity-cn-community/Antigravity-Chinese-Localization)（MIT）：桌面设置、远程会话术语及模型/思考深度徽标译法补充
+- [`ruxiayu/antigravity-zh-cn`](https://github.com/ruxiayu/antigravity-zh-cn)（MIT）：上下文作用域词条（如 `New` / `Low` / `Medium` / `High`）与拆散 DOM 节点翻译补充
+
 ## 兼容性
 
 当前实机验证：**Windows 11 / Antigravity App 2.21.1、2.22.0**；2.22.0 的真实上下文读取和合并悬浮卡已验收。Linux/macOS 的完整登录界面仍需用户实机验证，自动化覆盖范围见兼容性文档。
@@ -302,7 +322,8 @@ python3 manage.py install
 独立 Antigravity IDE 2.5.5 / 2.6.0 提供单独 VSIX，Windows 已实机验证。其他编辑器扩展和 DSH 暂不支持。Linux/macOS 桌面版已适配原生路径、后台发现和 shell 安装器；IDE 有自动化覆盖，完整登录界面仍待实机验收，详见兼容性文档。
 参考 DSH Rail Music 的项目组织与文档风格，但安装接口不同，不能使用 `dsh plugin add` 安装 Antigrative Dashboard。
 
-[完整边界与更新策略 →](COMPATIBILITY.md)
+[完整边界与更新策略 →](COMPATIBILITY.md) · [计时策略 →](docs/TPS.md) · [采集与长对话 →](docs/LONG_CONVERSATIONS.md) · [用量口径 →](docs/USAGE.md)
+生成 README 截图属于可选开发任务：`node tools/build-readme-assets.mjs` 需要 Playwright（或指定 `PLAYWRIGHT_MODULE`），会直接用当前源码渲染中英文 2x 演示图，非安装依赖。
 
 ## 常见问题
 

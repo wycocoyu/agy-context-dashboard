@@ -710,7 +710,7 @@ function renderAuditSection() {
         badge.textContent = c.exitCode !== null ? t('auditExitCode', { code: c.exitCode }) : (c.status === 'RUNNING' ? t('auditRunning') : '—');
         top.append(cmdEl, badge);
         const meta = document.createElement('div'); meta.className = 'audit-row-meta';
-        if (c.durationMs !== null) meta.append(Object.assign(document.createElement('span'), { textContent: elapsed(c.durationMs / 1000) }));
+        if (c.durationMs !== null) meta.append(Object.assign(document.createElement('span'), { textContent: language.elapsed(c.durationMs / 1000) }));
         if (c.cwd) meta.append(Object.assign(document.createElement('span'), { textContent: sanitizeDisplayPath(c.cwd).split('/').at(-1) || '' }));
         const link = Object.assign(document.createElement('button'), { type: 'button', className: 'audit-step-link', textContent: `S${c.stepIndex}` });
         link.addEventListener('click', () => jumpToAuditStep(c.stepIndex));
@@ -845,7 +845,7 @@ function renderInsightsView() {
       { label: t('insightsKpiCost'), val: k.estimatedCostUsd !== null ? `${formatUsd(k.estimatedCostUsd)}` : '—', sub: `${t('estimatedBadge')} · ${t('insightsKpiPricedSub', { priced: k.pricedSessions ?? 0, total: k.totalSessionsForPricing ?? 0 })}`, title: t('estimatedCostTitle') },
       { label: t('insightsKpiCache'), val: percent(k.avgCacheHitRate), sub: `${compact(k.cacheReadTokens ?? 0)} read` },
       { label: t('insightsKpiTools'), val: count(k.totalToolCalls ?? 0), sub: t('insightsKpiCallsSub', { n: count(k.totalModelCalls ?? 0) }) },
-      { label: t('insightsKpiDuration'), val: elapsed((k.totalActiveMs ?? 0) / 1000), sub: insightsData.cacheInfo ? t('insightsCacheMeta', { total: insightsData.cacheInfo.totalScanned, ms: insightsData.cacheInfo.scanMs }) : '' },
+      { label: t('insightsKpiDuration'), val: language.elapsed((k.totalActiveMs ?? 0) / 1000), sub: insightsData.cacheInfo ? t('insightsCacheMeta', { total: insightsData.cacheInfo.totalScanned, ms: insightsData.cacheInfo.scanMs }) : '' },
     ];
     kpiWrap.replaceChildren(...cards.map(c => {
       const card = document.createElement('div'); card.className = 'kpi-card';

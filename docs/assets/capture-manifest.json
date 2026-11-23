@@ -1,6 +1,6 @@
 {
-  "version": "0.9.7",
-  "source": "compat/inline-widget.cjs",
+  "version": "0.9.8",
+  "source": "compat/inline-widget.cjs + sidecars/panel",
   "data": "illustrative",
   "scale": 2,
   "files": [
@@ -8,18 +8,24 @@
     "responsive.png",
     "speed.png",
     "widget.png",
+    "quota.png",
     "context.png",
     "usage-overview.png",
     "usage-details.png",
     "usage-intro.png",
+    "panel-session.png",
+    "panel-insights.png",
     "hero-zh.png",
     "responsive-zh.png",
     "speed-zh.png",
     "widget-zh.png",
+    "quota-zh.png",
     "context-zh.png",
     "usage-overview-zh.png",
     "usage-details-zh.png",
-    "usage-intro-zh.png"
+    "usage-intro-zh.png",
+    "panel-session-zh.png",
+    "panel-insights-zh.png"
   ],
   "diagnostics": [
     {
@@ -27,7 +33,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -35,7 +41,7 @@
       "density": "icons",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -51,7 +57,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -59,7 +65,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -67,7 +73,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -75,7 +81,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -83,7 +89,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -91,7 +97,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -99,7 +105,15 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
+      "nativeTargetsSafe": true
+    },
+    {
+      "scope": "main",
+      "density": "full",
+      "context": "44%",
+      "cache": "83.8%",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -107,7 +121,7 @@
       "density": "icons",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -123,7 +137,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -131,7 +145,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -139,7 +153,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -147,7 +161,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -155,7 +169,7 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     },
     {
@@ -163,7 +177,15 @@
       "density": "full",
       "context": "44%",
       "cache": "83.8%",
-      "tps": "104.6",
+      "tps": "145.1",
+      "nativeTargetsSafe": true
+    },
+    {
+      "scope": "main",
+      "density": "full",
+      "context": "44%",
+      "cache": "83.8%",
+      "tps": "145.1",
       "nativeTargetsSafe": true
     }
   ]
