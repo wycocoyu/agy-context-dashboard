@@ -230,11 +230,38 @@ def _windows_shortcut_roots(home, env):
     env = os.environ if env is None else env
     is_real_home = home.resolve() == Path.home().resolve()
     appdata = Path(env['APPDATA']) if (is_real_home and env.get('APPDATA')) else (home / 'AppData' / 'Roaming')
-    return [
+    candidates = []
+    if sys.platform == 'win32' and is_real_home:
+        try:
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r'Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders',
+            ) as key:
+                val, _ = winreg.QueryValueEx(key, 'Desktop')
+                expanded = os.path.expandvars(str(val or '').strip())
+                if expanded and '%' not in expanded:
+                    candidates.append(Path(expanded))
+        except Exception:
+            pass
+    for key in ('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer'):
+        base = env.get(key)
+        if isinstance(base, str) and base.strip():
+            candidates.append(Path(base.strip()) / 'Desktop')
+    candidates.extend([
+        home / 'OneDrive' / 'Desktop',
         home / 'Desktop',
         appdata / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs',
         appdata / 'Microsoft' / 'Internet Explorer' / 'Quick Launch' / 'User Pinned' / 'TaskBar',
-    ]
+    ])
+    seen = set()
+    roots = []
+    for cand in candidates:
+        key = str(cand).casefold()
+        if key not in seen:
+            seen.add(key)
+            roots.append(cand)
+    return roots
 
 
 def _iter_lnk_files(roots):

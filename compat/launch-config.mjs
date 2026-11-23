@@ -13,6 +13,36 @@ export const MACOS_LAUNCHER_BUNDLE_ID = 'io.github.wycocoyu.agy-context-dashboar
 export const MACOS_MANAGED_PLIST_KEY = 'XAntigravityPulseManaged';
 
 const archiveCache = new Map();
+let cachedWindowsDesktop;
+
+function expandWindowsEnv(value, env = process.env) {
+  const entries = Object.entries(env || {});
+  return String(value || '').replace(/%([^%]+)%/g, (match, name) => {
+    const key = name.toLowerCase();
+    const found = entries.find(([k]) => k.toLowerCase() === key);
+    return found && found[1] ? String(found[1]) : match;
+  });
+}
+
+async function resolveRealWindowsDesktop(env = process.env) {
+  if (cachedWindowsDesktop !== undefined) return cachedWindowsDesktop;
+  try {
+    const stdout = await new Promise((resolvePromise, reject) => {
+      execFile(
+        'reg.exe',
+        ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders', '/v', 'Desktop'],
+        { windowsHide: true, timeout: 3000 },
+        (error, out) => (error ? reject(error) : resolvePromise(String(out || ''))),
+      );
+    });
+    const match = stdout.match(/^\s*Desktop\s+REG_(?:EXPAND_)?SZ\s+(.+)$/im);
+    const expanded = match ? expandWindowsEnv(match[1].trim(), env) : '';
+    cachedWindowsDesktop = expanded && !/%[^%]+%/.test(expanded) ? expanded : null;
+  } catch {
+    cachedWindowsDesktop = null;
+  }
+  return cachedWindowsDesktop;
+}
 
 async function isLink(targetPath) {
   try {
@@ -237,14 +267,32 @@ export function mergeDesktopEntry(text) {
   return out.join('\n') + '\n';
 }
 
-function windowsShortcutRoots({ home = homedir(), env = process.env } = {}) {
+async function windowsShortcutRoots({ home = homedir(), env = process.env, desktopDir } = {}) {
   const isRealHome = resolve(home) === resolve(homedir());
   const appdata = isRealHome && env.APPDATA ? env.APPDATA : join(home, 'AppData', 'Roaming');
-  return [
+  const candidates = [];
+  if (desktopDir) candidates.push(desktopDir);
+  if (process.platform === 'win32' && isRealHome && !desktopDir) {
+    const regDesktop = await resolveRealWindowsDesktop(env);
+    if (regDesktop) candidates.push(regDesktop);
+  }
+  for (const key of ['OneDrive', 'OneDriveCommercial', 'OneDriveConsumer']) {
+    const base = env?.[key];
+    if (typeof base === 'string' && base.trim()) candidates.push(join(base.trim(), 'Desktop'));
+  }
+  candidates.push(
+    join(home, 'OneDrive', 'Desktop'),
     join(home, 'Desktop'),
     join(appdata, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
     join(appdata, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar'),
-  ];
+  );
+  const seen = new Set();
+  return candidates.filter(dir => {
+    const key = dir.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function iterLnkFiles(roots) {
@@ -591,11 +639,11 @@ async function atomicTextWrite(filePath, content, mode = 0o644) {
   await rename(tmp, filePath);
 }
 
-export async function inspectDesktopLaunch({ platform = process.platform, home = homedir(), env = process.env } = {}) {
+export async function inspectDesktopLaunch({ platform = process.platform, home = homedir(), env = process.env, desktopDir } = {}) {
   if (platform === 'win32') {
     const entrypoints = [];
     let allReady = true;
-    for (const lnk of await iterLnkFiles(windowsShortcutRoots({ home, env }))) {
+    for (const lnk of await iterLnkFiles(await windowsShortcutRoots({ home, env, desktopDir }))) {
       try {
         const buf = await readFile(lnk);
         const info = parseLnkBuffer(buf);
@@ -703,6 +751,7 @@ export async function ensureDesktopLaunchConfig({
   platform = process.platform,
   home = homedir(),
   env = process.env,
+  desktopDir,
   settingsPath,
   execPowerShell = defaultExecPowerShell,
   systemDirs,
@@ -710,13 +759,13 @@ export async function ensureDesktopLaunchConfig({
   systemAppDirs,
   execCodesign = defaultExecCodesign,
 } = {}) {
-  const status = await inspectDesktopLaunch({ platform, home, env });
+  const status = await inspectDesktopLaunch({ platform, home, env, desktopDir });
   if (status.configured) return { ...status, repaired: false };
 
   if (platform === 'win32') {
     const updates = [];
     const entrypoints = [];
-    for (const lnk of await iterLnkFiles(windowsShortcutRoots({ home, env }))) {
+    for (const lnk of await iterLnkFiles(await windowsShortcutRoots({ home, env, desktopDir }))) {
       try {
         const info = parseLnkBuffer(await readFile(lnk));
         if (!isAntigravityDesktopShortcut(lnk, info)) continue;
@@ -823,7 +872,7 @@ export async function ensureDesktopLaunchConfig({
       }
       await execCodesign(bundle).catch(() => {});
       await recordManagedLaunchField(settingsPath, 'macosLauncherApp', bundle);
-      const after = await inspectDesktopLaunch({ platform, home, env });
+      const after = await inspectDesktopLaunch({ platform, home, env, desktopDir });
       return { ...after, repaired: after.configured };
     } catch {
       return { configured: false, repaired: false, supported: true, entrypoints: [bundle] };

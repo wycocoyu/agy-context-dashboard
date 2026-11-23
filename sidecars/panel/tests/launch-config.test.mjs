@@ -155,6 +155,53 @@ test('ensureDesktopLaunchConfig uses zero-subprocess fast path and self-heals ov
   }
 });
 
+test('ensureDesktopLaunchConfig discovers and repairs OneDrive and redirected Desktop shortcuts', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ag-pulse-win-od-'));
+  try {
+    const startMenu = join(home, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+    const odDesktop = join(home, 'OneDrive - Contoso', 'Desktop');
+    const customDesktop = join(home, 'CustomDesktop');
+    const settingsPath = join(home, 'Local', 'settings.json');
+    await mkdir(startMenu, { recursive: true });
+    await mkdir(odDesktop, { recursive: true });
+    await mkdir(customDesktop, { recursive: true });
+
+    const smLnk = join(startMenu, 'Antigravity.lnk');
+    const odLnk = join(odDesktop, 'Antigravity.lnk');
+    const customLnk = join(customDesktop, 'Antigravity.lnk');
+    await writeFile(smLnk, buildLnk('C:\\Apps\\Antigravity.exe', '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1'));
+    await writeFile(odLnk, buildLnk('C:\\Apps\\Antigravity.exe', ''));
+    await writeFile(customLnk, buildLnk('C:\\Apps\\Antigravity.exe', ''));
+
+    const env = { OneDriveCommercial: join(home, 'OneDrive - Contoso') };
+    const before = await inspectDesktopLaunch({ platform: 'win32', home, env, desktopDir: customDesktop });
+    assert.equal(before.configured, false);
+    assert.ok(before.entrypoints.includes(odLnk));
+    assert.ok(before.entrypoints.includes(customLnk));
+
+    const execPowerShell = async updates => {
+      for (const item of updates) {
+        const info = parseLnkBuffer(await readFile(item.path));
+        await writeFile(item.path, buildLnk(info.target, item.args, info.icon || ''));
+      }
+    };
+    const repaired = await ensureDesktopLaunchConfig({
+      platform: 'win32',
+      home,
+      env,
+      desktopDir: customDesktop,
+      settingsPath,
+      execPowerShell,
+    });
+    assert.equal(repaired.configured, true);
+    assert.equal(repaired.repaired, true);
+    assert.equal(parseLnkBuffer(await readFile(odLnk)).args, '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
+    assert.equal(parseLnkBuffer(await readFile(customLnk)).args, '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test('ensureDesktopLaunchConfig configures Linux desktop file without overwriting unmanaged user files', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ag-pulse-linux-'));
   try {

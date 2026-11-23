@@ -116,6 +116,22 @@ class LaunchConfigTests(unittest.TestCase):
             self.assertEqual(merged2, merged)
             self.assertEqual(lc.strip_debug_arguments(merged, added), '--profile default -- https://example.com')
 
+    def test_windows_shortcut_discovers_onedrive_redirected_desktop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            programs = home / 'AppData' / 'Roaming' / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs'
+            od_desktop = home / 'OneDrive' / 'Desktop'
+            programs.mkdir(parents=True)
+            od_desktop.mkdir(parents=True)
+            sm_lnk = programs / 'Antigravity.lnk'
+            od_lnk = od_desktop / 'Antigravity.lnk'
+            sm_lnk.write_bytes(build_lnk(r'C:\Users\demo\AppData\Local\Programs\antigravity\Antigravity.exe', '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1'))
+            od_lnk.write_bytes(build_lnk(r'C:\Users\demo\AppData\Local\Programs\antigravity\Antigravity.exe', ''))
+
+            status = lc.inspect_desktop_launch(platform='win32', home=home, env={'OneDrive': str(home / 'OneDrive')})
+            self.assertFalse(status['configured'])
+            self.assertIn(str(od_lnk), status['entrypoints'])
+
     def test_windows_shortcut_configure_and_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
