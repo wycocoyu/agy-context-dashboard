@@ -2471,7 +2471,8 @@ module.exports = function installAgPulseInlineWidget() {
     const nextQuotaSig=JSON.stringify([data.quotaUpdatedAt||null,groups]);
     if(nextQuotaSig!==quotaSigCache){quotaSigCache=nextQuotaSig;quotaObservedAt=Date.now();}
     const paceNow=quotaObservedAt||Date.now();
-    const pace=group?language.groupQuotaPace(group,paceNow):null;
+    const forecastOpts={dailyWorkHours:data.usage?.dailyWorkHours};
+    const pace=group?language.groupQuotaPace(group,paceNow,forecastOpts):null;
     const paceBadge=$('quota-pace');
     if(paceBadge){
       hidden(paceBadge,!pace);
@@ -2488,7 +2489,7 @@ module.exports = function installAgPulseInlineWidget() {
       const heading=t(window==='weekly'&&isArgon?'argonWeek':name);
       text(`${name}-quota-title`,heading);attribute($(`${name}-quota-section`),'aria-label',heading);attribute($(`${name}-track`),'aria-label',heading);
       const b=group?.windows?.[window],remaining=language.quotaRemaining(b),balance=b?.disabled?t('unavailableQuota'):pct(remaining);
-      const forecast=language.quotaForecast(b,window,paceNow);
+      const forecast=language.quotaForecast(b,window,paceNow,forecastOpts);
       const barBg=remaining!==null&&remaining<.05?'var(--pulse-danger)':'';
       text(name,balance);text(`${name}-balance`,balance);
       style($(`${name}-fill`),'width',remaining!==null?`${remaining*100}%`:'0%');style($(`${name}-fill`),'background',barBg);
@@ -2513,7 +2514,7 @@ module.exports = function installAgPulseInlineWidget() {
             text(`${name}-forecast-text`,'');
           }
         }
-        attribute(forecastEl,'title',showF?t('forecastBasis',{remaining:pct(forecast.remaining),time:pct(forecast.timeRemaining)}):null);
+        attribute(forecastEl,'title',showF?(forecast.dailyWorkHours<24?t('forecastBasisWork',{remaining:pct(forecast.remaining),time:pct(forecast.timeRemaining),hours:forecast.dailyWorkHours}):t('forecastBasis',{remaining:pct(forecast.remaining),time:pct(forecast.timeRemaining)})):null);
       }
       attribute($(`${name}-track`),'aria-valuenow',remaining!==null?remaining*100:null);attribute($(`${name}-track`),'aria-valuemin','0');attribute($(`${name}-track`),'aria-valuemax','100');
       const isFirstWindow=window===visibleQuotaWindows[0];

@@ -369,7 +369,7 @@ export class UsageLedger{
     let scan=this.jsonSummaryPending.get(pendingKey);
     if(!scan){
       scan=(async()=>{
-        const daily=new Map(),models=new Set(),seen=new Map(),acctIds=new Set(),activeAccounts=new Set();let unreadable=0,unknownTokens=0,unknownRequests=0,partialRequests=0;
+        const daily=new Map(),dayTimes=new Map(),models=new Set(),seen=new Map(),acctIds=new Set(),activeAccounts=new Set();let unreadable=0,unknownTokens=0,unknownRequests=0,partialRequests=0;
         for(const entry of bucketEntries){
           const jsonFiles=entry.files.filter(name=>/^[a-f0-9]{64}\.json$/.test(name));
           for(const name of jsonFiles){
@@ -393,15 +393,20 @@ export class UsageLedger{
           }
           if(r.at===null){unknownTokens+=sum(r);unknownRequests++;continue;}
           const date=dateKey(r.at,this.timeZone);if(!daily.has(date))daily.set(date,{date,models:{}});
+          let times=dayTimes.get(date);if(!times){times=[];dayTimes.set(date,times);}times.push(r.at);
           const day=daily.get(date);if(!Object.hasOwn(day.models,model))Object.defineProperty(day.models,model,{value:{uncached:0,cacheRead:0,cacheWrite:0,output:0,total:0,requests:0},enumerable:true,writable:true,configurable:true});
           const bucket=day.models[model];for(const key of keys)bucket[key]+=r[key]??0;bucket.total+=sum(r);bucket.requests++;
         }
         const days=[...daily.values()].sort((a,b)=>a.date.localeCompare(b.date));
         const total=day=>Object.values(day.models).reduce((n,r)=>n+r.total,0);
+        const todayActiveMs=computeActiveDurationMs(dayTimes.get(today)||[]);
+        const fallbackDayMs=todayActiveMs>0?[]:days.filter(d=>d.date<today).slice(-7).map(d=>computeActiveDurationMs(dayTimes.get(d.date)||[])).filter(ms=>ms>0);
+        const {dailyWorkHours}=deriveDailyWorkHours(todayActiveMs,fallbackDayMs);
         const value={accountKey:allBuckets?'all-local':scope,timeZone:this.timeZone,today,days,models:[...models].sort(),todayTokens:days.filter(d=>d.date===today).reduce((n,d)=>n+total(d),0),
           weekTokens:days.filter(d=>d.date>=weekStart(today)&&d.date<=today).reduce((n,d)=>n+total(d),0),
           monthTokens:days.filter(d=>d.date.slice(0,7)===today.slice(0,7)&&d.date<=today).reduce((n,d)=>n+total(d),0),
           totalTokens:days.reduce((n,d)=>n+total(d),0)+unknownTokens,unknownTokens,unknownRequests,partialRequests,unreadableFiles:unreadable,
+          todayActiveMs,dailyWorkHours,
           requests:seen.size,firstDate:days[0]?.date||null,updatedAt:new Date(now).toISOString(),source:this.source,...(allBuckets?{accountsCount:activeAccounts.size}:{})};
         if(specs.length)Object.defineProperty(value,'_quotaWindowCounts',{value:windowCounts,enumerable:false,configurable:true});
         return value;
@@ -416,6 +421,25 @@ export class UsageLedger{
   }
 }
 export function weekStart(date){const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));return d.toISOString().slice(0,10);}
+export function computeActiveDurationMs(timestamps,{gapMs=15*60*1000,minStretchMs=2*60*1000}={}){
+  if(!Array.isArray(timestamps)||!timestamps.length)return 0;
+  const sorted=timestamps.filter(t=>Number.isFinite(t)&&t>=0).sort((a,b)=>a-b);
+  if(!sorted.length)return 0;
+  let total=0,start=sorted[0],prev=sorted[0];
+  for(let i=1;i<sorted.length;i++){
+    const t=sorted[i];
+    if(t-prev<=gapMs)prev=t;
+    else {total+=Math.max(minStretchMs,prev-start);start=prev=t;}
+  }
+  total+=Math.max(minStretchMs,prev-start);
+  return Math.min(86400000,total);
+}
+export function deriveDailyWorkHours(todayActiveMs,fallbackDayMs=[]){
+  const activeMs=Number.isFinite(todayActiveMs)&&todayActiveMs>0?todayActiveMs:(Array.isArray(fallbackDayMs)&&fallbackDayMs.length?fallbackDayMs.reduce((s,v)=>s+v,0)/fallbackDayMs.length:0);
+  if(!activeMs)return {todayActiveMs:0,dailyWorkHours:null};
+  const hours=Math.max(0.25,Math.min(24,Math.round((activeMs/3600000)*10)/10));
+  return {todayActiveMs:Number.isFinite(todayActiveMs)&&todayActiveMs>0?todayActiveMs:0,dailyWorkHours:hours};
+}
 
 export class DesktopUsage{
   constructor(store,ledger=new UsageLedger(),{host=null,discoverLocal=null,owns=()=>true,now=Date.now,sliceMs=1500,continueDelay=1200,itemDelay=undefined,

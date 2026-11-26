@@ -263,7 +263,7 @@ function renderQuota(window, prefix, now = Date.now() + serverOffset) {
   const bucket = group?.windows?.[window];
   const remaining = language.quotaRemaining(bucket);
   $(`${prefix}-balance`).textContent = bucket?.disabled?t('unavailableQuota'):percent(remaining);
-  const forecast = language.quotaForecast(bucket, window, now);
+  const forecast = language.quotaForecast(bucket, window, now, { dailyWorkHours: snapshot?.usage?.dailyWorkHours });
   const barBg = remaining !== null && remaining < .05 ? 'var(--pulse-danger)' : '';
   const fill = $(`${prefix}-fill`), track = $(`${prefix}-track`);
   fill.style.width = typeof remaining === 'number' ? `${remaining * 100}%` : '0%';
@@ -289,7 +289,7 @@ function renderQuota(window, prefix, now = Date.now() + serverOffset) {
         forecastMain.textContent = '';
       }
     }
-    if (showForecast) forecastRow.title = t('forecastBasis', { remaining: percent(forecast.remaining), time: percent(forecast.timeRemaining) });
+    if (showForecast) forecastRow.title = forecast.dailyWorkHours < 24 ? t('forecastBasisWork', { remaining: percent(forecast.remaining), time: percent(forecast.timeRemaining), hours: forecast.dailyWorkHours }) : t('forecastBasis', { remaining: percent(forecast.remaining), time: percent(forecast.timeRemaining) });
     else forecastRow.removeAttribute('title');
   }
   if (typeof remaining === 'number') { track.setAttribute('aria-valuenow', String(remaining * 100)); track.setAttribute('aria-valuemin','0'); track.setAttribute('aria-valuemax','100'); }
@@ -1429,7 +1429,7 @@ function render() {
   if (panelSpot) {
     text('panel-group-name', group ? groupLabel(group) : '—');
     hidden('panel-active-group', !group);
-    const pace = group ? language.groupQuotaPace(group, now) : null;
+    const pace = group ? language.groupQuotaPace(group, now, { dailyWorkHours: snapshot?.usage?.dailyWorkHours }) : null;
     const badge = $('panel-quota-pace');
     if (badge) {
       hidden('panel-quota-pace', !pace);

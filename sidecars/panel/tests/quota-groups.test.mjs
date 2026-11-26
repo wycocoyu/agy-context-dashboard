@@ -140,3 +140,29 @@ test('2.34.0 Neon and Orchestrator placeholders classify to the expected quota f
  assert.equal(quotaModelFamily('MODEL_PLACEHOLDER_M681'),'gemini-argon');
  assert.equal(ui.quotaGroupKind({id:'neon',name:'Gemini 4 Neon'}),'gemini');
 });
+
+test('dailyWorkHours derives automatically from today active conversation duration and scales weekly forecast',async()=>{
+ const {computeActiveDurationMs,deriveDailyWorkHours}=await import('../usage.mjs');
+ const ui=createI18n('zh-CN');
+ const now=Date.UTC(2026,10,26,9,45,0),weekMs=604800000,hourMs=3600000,minMs=60000;
+ const base=Date.UTC(2026,10,26,1,0,0);
+ const ms=computeActiveDurationMs([base,base+10*minMs,base+20*minMs,base+30*minMs,base+150*minMs,base+165*minMs,base+180*minMs,base+195*minMs]);
+ assert.equal(ms,75*minMs);
+ assert.equal(deriveDailyWorkHours(ms).dailyWorkHours,1.3);
+ assert.equal(deriveDailyWorkHours(0,[4*hourMs,6*hourMs]).dailyWorkHours,5);
+ assert.equal(deriveDailyWorkHours(0,[]).dailyWorkHours,null);
+ const early={available:true,remaining:.935,resetAt:new Date(now+weekMs-Math.round(1.65*hourMs)).toISOString()};
+ const f24=ui.quotaForecast(early,'weekly',now,{dailyWorkHours:24});
+ const f8=ui.quotaForecast(early,'weekly',now,{dailyWorkHours:8});
+ assert.equal(f24.dailyWorkHours,24);assert.equal(f8.dailyWorkHours,8);
+ assert.equal(f24.willExhaust,true);assert.equal(f8.willExhaust,true);
+ assert.ok(f8.exhaustInMs>f24.exhaustInMs*2.9&&f8.exhaustInMs<f24.exhaustInMs*3.1,'8h/day stretches active depletion into ~3x wall-clock time');
+ const moderate={available:true,remaining:.98,resetAt:new Date(now+weekMs-Math.round(1.65*hourMs)).toISOString()};
+ assert.equal(ui.quotaForecast(moderate,'weekly',now,{dailyWorkHours:24}).willExhaust,true);
+ const mod8=ui.quotaForecast(moderate,'weekly',now,{dailyWorkHours:8});
+ assert.equal(mod8.willExhaust,false);assert.equal(mod8.outlook,'ok');
+ const f15=ui.quotaForecast(early,'weekly',now,{dailyWorkHours:1.5});
+ assert.equal(f15.dailyWorkHours,1.5);assert.equal(f15.willExhaust,false);
+ const five={available:true,remaining:.7,resetAt:new Date(now+2*hourMs).toISOString()};
+ assert.deepEqual(ui.quotaForecast(five,'5h',now,{dailyWorkHours:8}),ui.quotaForecast(five,'5h',now,{dailyWorkHours:24}));
+});

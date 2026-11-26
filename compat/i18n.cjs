@@ -37,7 +37,7 @@ module.exports = function createDashboardI18n(initialLanguage) {
       strip:'Antigravity Dashboard statistics',session:'Session statistics',cache:'Cache hit',cacheTitle:'Token usage',five:'Five-hour quota',week:'Weekly quota',weekShort:'Wk',
       modelTime:'Model time',toolTime:'Tool time',ttft:'Session P50 TTFT',ttftShort:'TTFT (P50 / Last)',ttftBasis:'TTFT (time to first streamed token; some 3p models may buffer thinking) · Session P50: {p50} · Latest: {latest}',latestSpeed:'Latest decode',latestSpeedTip:'Streaming decode speed of the latest qualified request (total output including thinking ÷ streaming time; excludes < 1s or < 30 output token short windows).',shortSpeedTip:'Short sample ({tokens} tok / {dur}), excluded from decode avg & peak (< 1s or < 30 output tokens).',bufferedSpeedTip:'Buffered burst ({tokens} tok flushed in {dur}), excluded from decode avg & peak.',latestTipE2e:' · E2E {e2e} tok/s',latestTipPrev:' · Prior qualified {prev} tok/s',shortSublineRef:'{tokens} tok · {dur} · prior {prev} tok/s',shortSubline:'{tokens} tok · {dur} · excluded',bufferedSublineE2e:'{tokens} tok · {dur} · E2E {e2e} tok/s',sessionAvg:'Session decode',e2eSpeed:'E2E speed',e2eShort:'E2E',e2eBasis:'End-to-end effective speed: total output tokens ÷ (TTFT + streaming time) across qualified requests.',peakSpeed:'Peak decode',peakBasis:'Peak streaming decode speed across qualified requests (excludes < 1s or < 30 output token bursts).',basisShortResponse:'Response only',basisShortAll:'Output + thinking',sessionTps:'Session decode TPS',latest:'Last request',tokens:'Response / thinking',remaining:'remaining',
       resetIn:'Resets in',resetTime:'Reset time (UTC+8)',group:'Quota group',selectGroup:'Select quota group',refresh:'Refresh quota',refreshStats:'Refresh statistics',refreshing:'Refreshing…',
-      speedStyle:'Speed card style',styleMinimal:'Minimal',styleCat:'Pixel cat',styleSaveFailed:'Style could not be saved. Try again.',outlookOk:'Comfortable',outlookTight:'Tight',outlookExhaust:'Runs out early',paceIdle:'Unused',forecastLeft:'~{pct} left at reset',forecastDepletes:'Runs out in ~{eta}, {early} before reset',forecastWarming:'Used {pct} · warming up',forecastBasis:'{remaining} quota left · {time} of the window left · linear projection from this window\'s average usage',
+      speedStyle:'Speed card style',styleMinimal:'Minimal',styleCat:'Pixel cat',styleSaveFailed:'Style could not be saved. Try again.',outlookOk:'Comfortable',outlookTight:'Tight',outlookExhaust:'Runs out early',paceIdle:'Unused',forecastLeft:'~{pct} left at reset',forecastDepletes:'Runs out in ~{eta}, {early} before reset',forecastWarming:'Used {pct} · warming up',forecastBasis:'{remaining} quota left · {time} of the window left · linear projection from this window\'s average usage',forecastBasisWork:'{remaining} quota left · {time} of the window left · projected from today\'s active conversation time ({hours}h)',
       waiting:'Waiting for refresh',connecting:'Connecting to Antigravity…',waitingApp:'Waiting for Antigravity',waitingModel:'Waiting for a model request',waitingRequest:'No requests yet',
       hover:'Hover over the strip for details',autoConnect:'Open the app to connect automatically',loadingQuota:'Loading quota…',unavailableQuota:'Quota unavailable',
       live:'Connected to Antigravity Dashboard',stale:'Showing last available quota',offline:'Antigravity Dashboard is offline',
@@ -108,7 +108,7 @@ module.exports = function createDashboardI18n(initialLanguage) {
       strip:'Antigravity Dashboard 会话与额度状态条',session:'会话统计',cache:'缓存命中',cacheTitle:'Token 用量',five:'5h 额度',week:'周额度',weekShort:'周',
       modelTime:'模型调用用时',toolTime:'工具调用用时',ttft:'首字延迟 P50 (TTFT)',ttftShort:'首字 (P50 / 最新)',ttftBasis:'首字延迟 TTFT（到首个流式输出，部分第三方模型可能含思考缓冲）· 会话 P50：{p50} · 最新：{latest}',latestSpeed:'最新解码',latestSpeedTip:'最近一条合格请求的纯流式解码速度（总输出含思考 ÷ 流式时长；已隔离 < 1s 或 < 30 输出 Token 的短窗口样本）。',shortSpeedTip:'短样本（{tokens} tok / {dur}），因不足 1s 或 30 输出 Token 未计入均速与峰值。',bufferedSpeedTip:'缓冲突发（{tokens} tok 在 {dur} 内集中刷出），已从均速与峰值排除。',latestTipE2e:' · 本次端到端 {e2e} tok/s',latestTipPrev:' · 同模型上次合格 {prev} tok/s',shortSublineRef:'{tokens} tok · {dur} · 上次 {prev} tok/s',shortSubline:'{tokens} tok · {dur} · 未计入均速',bufferedSublineE2e:'{tokens} tok · {dur} · 端到端 {e2e} tok/s',sessionAvg:'会话解码',e2eSpeed:'端到端速率',e2eShort:'端到端',e2eBasis:'端到端有效速率：合格请求总输出 Token ÷（首字延迟 + 流式时长），反映计入等待后的综合效率。',peakSpeed:'解码峰值',peakBasis:'合格样本中的纯流式解码峰值（已隔离 < 1s 或 < 30 输出 Token 的短窗口突发）。',basisShortResponse:'仅正文输出',basisShortAll:'总输出（含思考）',sessionTps:'会话解码速率（TPS）',latest:'最近一次请求',tokens:'正文 / 思考输出',remaining:'剩余',
       resetIn:'重置倒计时',resetTime:'重置时间（北京时间）',group:'额度组',selectGroup:'选择额度组',refresh:'刷新额度',refreshStats:'刷新统计',refreshing:'正在刷新…',
-      speedStyle:'速度卡样式',styleMinimal:'简约',styleCat:'像素猫',styleSaveFailed:'样式设置暂时无法保存，请重试。',outlookOk:'额度充裕',outlookTight:'额度偏紧',outlookExhaust:'重置前耗尽',paceIdle:'暂未消耗',forecastLeft:'预计重置时剩 ~{pct}',forecastDepletes:'预计 {eta} 后耗尽、比重置早 {early}',forecastWarming:'已耗 {pct} · 采样预热中',forecastBasis:'剩余额度 {remaining} · 剩余时间 {time} · 按本窗口平均消耗线性推算',
+      speedStyle:'速度卡样式',styleMinimal:'简约',styleCat:'像素猫',styleSaveFailed:'样式设置暂时无法保存，请重试。',outlookOk:'额度充裕',outlookTight:'额度偏紧',outlookExhaust:'重置前耗尽',paceIdle:'暂未消耗',forecastLeft:'预计重置时剩 ~{pct}',forecastDepletes:'预计 {eta} 后耗尽、比重置早 {early}',forecastWarming:'已耗 {pct} · 采样预热中',forecastBasis:'剩余额度 {remaining} · 剩余时间 {time} · 按本窗口平均消耗线性推算',forecastBasisWork:'剩余额度 {remaining} · 剩余时间 {time} · 按当日总对话时长（{hours}h）推算',
       waiting:'等待刷新',connecting:'连接 Antigravity…',waitingApp:'等待 Antigravity',waitingModel:'等待模型生成',waitingRequest:'尚无请求',hover:'悬停状态条，查看详细统计',autoConnect:'打开应用后自动连接',loadingQuota:'读取额度…',unavailableQuota:'额度暂不可用',
       live:'已连接 Antigravity Dashboard',stale:'显示上次成功读取的额度',offline:'Antigravity Dashboard 暂未连接',
       responseBasis:'纯流式解码速度：正文 Token ÷ 流式时长（缺少总输出计数）；会话 TPS 按总时长加权。',allBasis:'纯流式解码速度：总输出 Token（含思考）÷ 流式时长；会话 TPS 按合格样本总时长加权。',
@@ -176,7 +176,7 @@ module.exports = function createDashboardI18n(initialLanguage) {
       strip:'Antigravity Dashboard 對話與配額狀態列',session:'工作階段統計',cache:'快取命中',cacheTitle:'Token 用量',five:'5 小時配額',week:'每週配額',weekShort:'週',
       modelTime:'模型呼叫耗時',toolTime:'工具呼叫耗時',ttft:'首字延遲 P50 (TTFT)',ttftShort:'首字 (P50 / 最新)',ttftBasis:'首字延遲 TTFT（至首個串流輸出，部分第三方模型可能含思考緩衝）· 階段 P50：{p50} · 最新：{latest}',latestSpeed:'最新解碼',latestSpeedTip:'最近一筆合格請求的純串流解碼速度（總輸出含思考 ÷ 串流耗時；已隔離 < 1s 或 < 30 輸出 Token 的短視窗樣本）。',shortSpeedTip:'短樣本（{tokens} tok / {dur}），因不足 1s 或 30 輸出 Token 未計入均速與峰值。',bufferedSpeedTip:'緩衝突發（{tokens} tok 於 {dur} 內集中刷出），已從均速與峰值排除。',latestTipE2e:' · 本次端對端 {e2e} tok/s',latestTipPrev:' · 同模型上次合格 {prev} tok/s',shortSublineRef:'{tokens} tok · {dur} · 上次 {prev} tok/s',shortSubline:'{tokens} tok · {dur} · 未計入均速',bufferedSublineE2e:'{tokens} tok · {dur} · 端對端 {e2e} tok/s',sessionAvg:'階段解碼',e2eSpeed:'端對端速率',e2eShort:'端對端',e2eBasis:'端對端有效速率：合格請求總輸出 Token ÷（首字延遲 + 串流耗時），反映計入等待後的綜合效率。',peakSpeed:'解碼峰值',peakBasis:'合格樣本中的純串流解碼峰值（已隔離 < 1s 或 < 30 輸出 Token 的短視窗突發）。',basisShortResponse:'僅回覆輸出',basisShortAll:'總輸出（含思考）',sessionTps:'連線階段解碼速率 (TPS)',latest:'最近一次請求',tokens:'回覆內文 / 思考輸出',remaining:'剩餘',
       resetIn:'重設倒數',resetTime:'重設時間 (UTC+8)',group:'配額群組',selectGroup:'選取配額群組',refresh:'重新整理配額',refreshStats:'重新整理統計',refreshing:'正在重新整理…',
-      speedStyle:'速度卡樣式',styleMinimal:'簡約',styleCat:'像素貓',styleSaveFailed:'樣式設定暫時無法儲存，請重試。',outlookOk:'配額充裕',outlookTight:'配額偏緊',outlookExhaust:'重設前耗盡',paceIdle:'暫未消耗',forecastLeft:'預計重設時剩 ~{pct}',forecastDepletes:'預計 {eta} 後耗盡、比重設早 {early}',forecastWarming:'已耗 {pct} · 取樣預熱中',forecastBasis:'剩餘配額 {remaining} · 剩餘時間 {time} · 依本週期平均消耗線性推算',
+      speedStyle:'速度卡樣式',styleMinimal:'簡約',styleCat:'像素貓',styleSaveFailed:'樣式設定暫時無法儲存，請重試。',outlookOk:'配額充裕',outlookTight:'配額偏緊',outlookExhaust:'重設前耗盡',paceIdle:'暫未消耗',forecastLeft:'預計重設時剩 ~{pct}',forecastDepletes:'預計 {eta} 後耗盡、比重設早 {early}',forecastWarming:'已耗 {pct} · 取樣預熱中',forecastBasis:'剩餘配額 {remaining} · 剩餘時間 {time} · 依本週期平均消耗線性推算',forecastBasisWork:'剩餘配額 {remaining} · 剩餘時間 {time} · 依當日總對話時長（{hours}h）推算',
       waiting:'等待重新整理',connecting:'連線至 Antigravity…',waitingApp:'等待 Antigravity',waitingModel:'等待模型生成',waitingRequest:'尚無請求',hover:'將游標移至狀態列可檢視詳細統計',autoConnect:'開啟應用程式後將自動連線',loadingQuota:'讀取配額中…',unavailableQuota:'配額暫時無法取得',
       live:'已連線至 Antigravity Dashboard',stale:'顯示前次成功讀取的配額',offline:'Antigravity Dashboard 尚未連線',
       responseBasis:'純串流解碼速度：回覆 Token ÷ 串流耗時（缺少總輸出計數）；階段 TPS 依總時長加權。',allBasis:'純串流解碼速度：總輸出 Token（含思考）÷ 串流耗時；階段 TPS 依合格樣本總時長加權。',
@@ -373,6 +373,7 @@ module.exports = function createDashboardI18n(initialLanguage) {
   function normalizeSpeedStyle(value){return SPEED_STYLES.includes(value)?value:'minimal';}
   function normalizeUsageScope(value){return USAGE_SCOPES.includes(value)?value:'local';}
   function normalizeQuotaDisplay(value){return QUOTA_DISPLAYS.includes(value)?value:'both';}
+  function normalizeDailyWorkHours(value){const n=typeof value==='number'?value:Number.NaN;return Number.isFinite(n)&&n>0&&n<=24?Math.max(0.25,Math.min(24,n)):24;}
   function normalizeHostUiLocalization(value){return value===true;}
   function normalizeInlineCacheHit(value){return value!==false;}
   function normalizeCacheHitTiers(value){return value===true;}
@@ -687,17 +688,28 @@ module.exports = function createDashboardI18n(initialLanguage) {
     const totalH=Math.round(ms/3600000),d=Math.floor(totalH/24),h=totalH%24;
     return `${d}d${h?` ${h}h`:''}`;
   }
-  function quotaForecast(bucket,windowKey,now=Date.now()){
+  function quotaForecast(bucket,windowKey,now=Date.now(),options={}){
     const remaining=quotaRemaining(bucket);
     if(remaining===null)return null;
     const used=Math.max(0,Math.min(1,1-remaining));
     const resetMs=Date.parse(bucket?.resetAt);
+    const workHours=windowKey==='weekly'?normalizeDailyWorkHours(options?.dailyWorkHours):24;
     if(!Number.isFinite(resetMs)||resetMs<=now){
-      return used===0?{remaining:1,used:0,timeRemaining:null,pace:'idle',paceDelta:0,forecastReady:false,warmingUp:false,projectedUsed:0,projectedRemaining:1,willExhaust:false,exhaustInMs:null,earlyByMs:null,outlook:'idle'}:null;
+      return used===0?{remaining:1,used:0,timeRemaining:null,pace:'idle',paceDelta:0,forecastReady:false,warmingUp:false,projectedUsed:0,projectedRemaining:1,willExhaust:false,exhaustInMs:null,earlyByMs:null,outlook:'idle',dailyWorkHours:workHours}:null;
     }
     const durationMs=windowKey==='5h'?18000000:604800000;
     const leftMs=Math.max(0,Math.min(durationMs,resetMs-now)),elapsedMs=durationMs-leftMs;
-    const timeRemaining=leftMs/durationMs,elapsed=elapsedMs/durationMs,paceDelta=remaining-timeRemaining;
+    const timeRemaining=leftMs/durationMs;
+    let effElapsedMs=elapsedMs,effLeftMs=leftMs;
+    if(windowKey==='weekly'&&workHours<24){
+      const dayMs=86400000,workDayMs=workHours*3600000;
+      effElapsedMs=Math.floor(elapsedMs/dayMs)*workDayMs+Math.min(elapsedMs%dayMs,workDayMs);
+      effLeftMs=leftMs*(workHours/24);
+    }
+    const effTotalMs=effElapsedMs+effLeftMs;
+    const effTimeRemaining=effTotalMs>0?effLeftMs/effTotalMs:timeRemaining;
+    const effElapsed=effTotalMs>0?effElapsedMs/effTotalMs:elapsedMs/durationMs;
+    const paceDelta=remaining-effTimeRemaining;
     let pace=used<0.0005?'idle':paceDelta<-0.05?'fast':paceDelta>0.08?'slow':'steady';
     const minSampleMs=windowKey==='5h'?300000:3600000;
     let forecastReady=false,warmingUp=false,projectedUsed=null,projectedRemaining=null,willExhaust=false,exhaustInMs=null;
@@ -706,11 +718,15 @@ module.exports = function createDashboardI18n(initialLanguage) {
     }else if(elapsedMs<minSampleMs&&used<0.1){
       warmingUp=true;
     }else{
-      const rawProjectedUsed=elapsed>0?used/elapsed:Infinity;
+      const rawProjectedUsed=effElapsed>0?used/effElapsed:Infinity;
       projectedUsed=Math.min(1,rawProjectedUsed);
       projectedRemaining=Math.max(0,1-rawProjectedUsed);
       willExhaust=rawProjectedUsed>1.005;
-      exhaustInMs=willExhaust&&used>0?Math.max(60000,Math.round(elapsedMs*(remaining/used))):null;
+      if(willExhaust&&used>0){
+        const workExhaustMs=effElapsedMs*(remaining/used);
+        const wallExhaustMs=workHours<24?workExhaustMs*(24/workHours):workExhaustMs;
+        exhaustInMs=Math.min(leftMs,Math.max(60000,Math.round(wallExhaustMs)));
+      }
       forecastReady=true;
       if(willExhaust)pace='fast';
     }
@@ -718,10 +734,10 @@ module.exports = function createDashboardI18n(initialLanguage) {
     const earlyByMs=willExhaust&&exhaustInMs!==null?Math.max(60000,leftMs-exhaustInMs):null;
     // The conclusion users act on: will this window last until it resets?
     const outlook=used<0.0005?'idle':!forecastReady?null:willExhaust?'exhaust':projectedRemaining<0.2?'tight':'ok';
-    return {remaining,used,timeRemaining,pace,paceDelta,forecastReady,warmingUp,projectedUsed,projectedRemaining,willExhaust,exhaustInMs,earlyByMs,outlook};
+    return {remaining,used,timeRemaining,pace,paceDelta,forecastReady,warmingUp,projectedUsed,projectedRemaining,willExhaust,exhaustInMs,earlyByMs,outlook,dailyWorkHours:workHours};
   }
-  function groupQuotaPace(group,now=Date.now()){
-    const items=quotaWindows(group).map(w=>({w,f:quotaForecast(group?.windows?.[w],w,now)})).filter(x=>x.f&&typeof x.f.timeRemaining==='number');
+  function groupQuotaPace(group,now=Date.now(),options={}){
+    const items=quotaWindows(group).map(w=>({w,f:quotaForecast(group?.windows?.[w],w,now,options)})).filter(x=>x.f&&typeof x.f.timeRemaining==='number');
     if(!items.length)return null;
     if(items.every(x=>x.f.outlook==='idle'))return {pace:'idle',delta:0,window:items[0].w,critical:false,label:t('paceIdle'),title:t('paceIdle')};
     // Report the window most at risk of running out before it resets.
@@ -765,5 +781,5 @@ module.exports = function createDashboardI18n(initialLanguage) {
     if(mode==='compact'&&show){const other=show==='5h'?wv:fv;if(other!==null&&other<=0.25)dot=other<=0.10?'danger':'warn';}
     return {five,week,min,show,arcValue,level,dot};
   }
-  return {mountLanguagePicker,normalizeSpeedStyle,connectSpeedStyle,normalizeUsageScope,connectUsageScope,normalizeQuotaDisplay,connectQuotaDisplay,normalizeHostUiLocalization,connectHostUiLocalization,normalizeInlineCacheHit,connectInlineCacheHit,normalizeCacheChipMode,connectCacheChipMode,normalizeStripMode,connectStripMode,normalizeBarPlacement,connectBarPlacement,normalizeTurnFooter,connectTurnFooter,normalizeBarColors,connectBarColors,normalizeThemeMode,connectThemeMode,normalizeCacheHitTone,connectCacheHitTone,normalizeCacheHitTiers,connectCacheHitTiers,normalizeBarOrder,normalizeBarHidden,normalizeContextChipMode,connectBarPreferences,quotaRingView,minimalTrail,t,rateNote,quotaGroupKind,quotaGroupLabel,chooseQuotaGroup,quotaWindows,quotaRemaining,shortEta,quotaForecast,groupQuotaPace,countdown,elapsed,resetDate,errorMessage,connectPreferences,get language(){return language;},setLanguage(value){language=value==='zh-CN'||value==='zh-TW'?value:'en';if(language!=='en')lastZh=language;},toggle(){language=language==='en'?(lastZh||'zh-TW'):'en';return language;}};
+  return {mountLanguagePicker,normalizeSpeedStyle,connectSpeedStyle,normalizeUsageScope,connectUsageScope,normalizeQuotaDisplay,connectQuotaDisplay,normalizeDailyWorkHours,normalizeHostUiLocalization,connectHostUiLocalization,normalizeInlineCacheHit,connectInlineCacheHit,normalizeCacheChipMode,connectCacheChipMode,normalizeStripMode,connectStripMode,normalizeBarPlacement,connectBarPlacement,normalizeTurnFooter,connectTurnFooter,normalizeBarColors,connectBarColors,normalizeThemeMode,connectThemeMode,normalizeCacheHitTone,connectCacheHitTone,normalizeCacheHitTiers,connectCacheHitTiers,normalizeBarOrder,normalizeBarHidden,normalizeContextChipMode,connectBarPreferences,quotaRingView,minimalTrail,t,rateNote,quotaGroupKind,quotaGroupLabel,chooseQuotaGroup,quotaWindows,quotaRemaining,shortEta,quotaForecast,groupQuotaPace,countdown,elapsed,resetDate,errorMessage,connectPreferences,get language(){return language;},setLanguage(value){language=value==='zh-CN'||value==='zh-TW'?value:'en';if(language!=='en')lastZh=language;},toggle(){language=language==='en'?(lastZh||'zh-TW'):'en';return language;}};
 };

@@ -5,7 +5,7 @@ import {createReadStream} from 'node:fs';
 import {lstat,stat,readdir,unlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {TrajectoryJson} from './trajectory-json.mjs';
-import {dateKey,weekStart,classifyQuotaGroupId,createUsageModelNormalizer} from './usage.mjs';
+import {dateKey,weekStart,classifyQuotaGroupId,createUsageModelNormalizer,computeActiveDurationMs,deriveDailyWorkHours} from './usage.mjs';
 const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:workerData.timeZone||'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
 const recordDate=time=>{const parts=formatter.formatToParts(time),get=k=>parts.find(p=>p.type===k).value;return get('year')+'-'+get('month')+'-'+get('day');};
 const keys=['uncached','cacheRead','cacheWrite','output'],HASH=/^[a-f0-9]{64}$/;
@@ -87,8 +87,9 @@ async function summarize(){
     }catch(e){db.exec('ROLLBACK TO source;RELEASE source');check();unreadable++;}
    }
   }
-  db.exec('BEGIN;CREATE TABLE buckets(day TEXT,model TEXT,uncached INTEGER,cacheRead INTEGER,cacheWrite INTEGER,output INTEGER,total INTEGER,requests INTEGER,PRIMARY KEY(day,model));CREATE TABLE models(model TEXT PRIMARY KEY);');
+  db.exec('BEGIN;CREATE TABLE buckets(day TEXT,model TEXT,uncached INTEGER,cacheRead INTEGER,cacheWrite INTEGER,output INTEGER,total INTEGER,requests INTEGER,PRIMARY KEY(day,model));CREATE TABLE models(model TEXT PRIMARY KEY);CREATE TABLE times(day TEXT NOT NULL,at INTEGER NOT NULL);');
   const bucket=db.prepare('INSERT INTO buckets VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(day,model) DO UPDATE SET uncached=uncached+excluded.uncached,cacheRead=cacheRead+excluded.cacheRead,cacheWrite=cacheWrite+excluded.cacheWrite,output=output+excluded.output,total=total+excluded.total,requests=requests+1');
+  const putTime=db.prepare('INSERT INTO times VALUES(?,?)');
   const model=db.prepare('INSERT OR IGNORE INTO models VALUES(?)'),normalizeModel=createUsageModelNormalizer();let unknownTokens=0,unknownRequests=0,partialRequests=0;
   const quotaWindowCounts={};
   for(const {j,acct} of db.prepare('SELECT j,acct FROM records ORDER BY rowid').iterate()){
@@ -98,14 +99,20 @@ async function summarize(){
     for(const spec of specs)if(spec.groupId===gid&&r.at>=spec.startAt&&r.at<=spec.endAt){const item=quotaWindowCounts[spec.id]||{observedTokens:0,requests:0};item.observedTokens+=total(r);item.requests++;quotaWindowCounts[spec.id]=item;}
    }
    if(r.at===null){unknownTokens+=total(r);unknownRequests++;continue;}
-   bucket.run(recordDate(r.at),name,...keys.map(k=>r[k]??0),total(r));
+   const dayKey=recordDate(r.at);
+   bucket.run(dayKey,name,...keys.map(k=>r[k]??0),total(r));
+   putTime.run(dayKey,r.at);
   }
   db.exec('COMMIT');
   const days=[],models=[];let used=0;
   for(const row of db.prepare('SELECT * FROM buckets ORDER BY day,model').iterate()){check();used+=Buffer.byteLength(JSON.stringify(row));if(used>4*1024*1024)throw Error('Usage summary exceeds result budget');let day=days.at(-1);if(day?.date!==row.day){day={date:row.day,models:{}};days.push(day);}const {day:_,model,...values}=row;Object.defineProperty(day.models,model,{value:values,enumerable:true,configurable:true,writable:true});}
   for(const {model} of db.prepare('SELECT model FROM models ORDER BY model').iterate()){used+=Buffer.byteLength(model);if(used>4*1024*1024)throw Error('Usage summary exceeds result budget');models.push(model);}
   const now=workerData.now,today=dateKey(now,workerData.timeZone),sumDay=d=>Object.values(d.models).reduce((n,r)=>n+r.total,0);
-  return {accountKey:allBuckets?'all-local':workerData.scope,timeZone:workerData.timeZone,today,days,models,todayTokens:days.filter(d=>d.date===today).reduce((n,d)=>n+sumDay(d),0),weekTokens:days.filter(d=>d.date>=weekStart(today)&&d.date<=today).reduce((n,d)=>n+sumDay(d),0),monthTokens:days.filter(d=>d.date.slice(0,7)===today.slice(0,7)&&d.date<=today).reduce((n,d)=>n+sumDay(d),0),totalTokens:days.reduce((n,d)=>n+sumDay(d),0)+unknownTokens,unknownTokens,unknownRequests,partialRequests,unreadableFiles:unreadable,requests:db.prepare('SELECT count(*) n FROM records').get().n,firstDate:days[0]?.date||null,updatedAt:new Date(now).toISOString(),source:workerData.source,...(allBuckets?{accountsCount:activeAccounts.size}:{}),...(specs.length?{quotaWindowCounts}:{})};
+  const readDayTimes=d=>db.prepare('SELECT at FROM times WHERE day=? ORDER BY at').all(d).map(x=>x.at);
+  const todayActiveMs=computeActiveDurationMs(readDayTimes(today));
+  const fallbackDayMs=todayActiveMs>0?[]:days.filter(d=>d.date<today).slice(-7).map(d=>computeActiveDurationMs(readDayTimes(d.date))).filter(ms=>ms>0);
+  const {dailyWorkHours}=deriveDailyWorkHours(todayActiveMs,fallbackDayMs);
+  return {accountKey:allBuckets?'all-local':workerData.scope,timeZone:workerData.timeZone,today,days,models,todayTokens:days.filter(d=>d.date===today).reduce((n,d)=>n+sumDay(d),0),weekTokens:days.filter(d=>d.date>=weekStart(today)&&d.date<=today).reduce((n,d)=>n+sumDay(d),0),monthTokens:days.filter(d=>d.date.slice(0,7)===today.slice(0,7)&&d.date<=today).reduce((n,d)=>n+sumDay(d),0),totalTokens:days.reduce((n,d)=>n+sumDay(d),0)+unknownTokens,unknownTokens,unknownRequests,partialRequests,unreadableFiles:unreadable,todayActiveMs,dailyWorkHours,requests:db.prepare('SELECT count(*) n FROM records').get().n,firstDate:days[0]?.date||null,updatedAt:new Date(now).toISOString(),source:workerData.source,...(allBuckets?{accountsCount:activeAccounts.size}:{}),...(specs.length?{quotaWindowCounts}:{})};
  }finally{db.close();await unlink(workerData.staging).catch(()=>{});}
 }
 try{const result=workerData.action==='merge'?await merge():await summarize();parentPort.postMessage({ok:true,result});}catch{parentPort.postMessage({ok:false,error:'Usage disk processing failed'});}
