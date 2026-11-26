@@ -180,3 +180,22 @@ test('transcript breakdown tracks tool args, 2.34.0 GENERIC tool steps, EPHEMERA
  assert.equal(JSON.stringify(stats).includes('PRIVATE'),false);
  assert.equal(JSON.stringify(stats).includes('RRRR'),false);
 });
+
+test('transcriptBrainRoot('+"'ide'"+', home) switches to unified brain on .ide_migration and ignores symlinks',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'ag-brain-root-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ assert.equal(transcriptBrainRoot('ide',home),join(home,'.gemini','antigravity-ide','brain'));
+ await mkdir(join(home,'.gemini','antigravity-ide','brain'),{recursive:true});
+ assert.equal(transcriptBrainRoot('ide',home),join(home,'.gemini','antigravity-ide','brain'));
+ await writeFile(join(home,'.gemini','antigravity-ide','.ide_migration'),'migrated');
+ assert.equal(transcriptBrainRoot('ide',home),join(home,'.gemini','antigravity','brain'));
+
+ const linked=await mkdtemp(join(tmpdir(),'ag-brain-link-'));t.after(()=>rm(linked,{recursive:true,force:true}));
+ await mkdir(join(linked,'.gemini','antigravity','brain'),{recursive:true});
+ await writeFile(join(linked,'.gemini','antigravity','.ide_migration'),'migrated');
+ try{
+  await symlink(join(linked,'.gemini','antigravity'),join(linked,'.gemini','antigravity-ide'),'dir');
+  assert.equal(transcriptBrainRoot('ide',linked),join(linked,'.gemini','antigravity-ide','brain'));
+ }catch(err){
+  if(!['EPERM','EACCES'].includes(err.code))throw err;
+ }
+});

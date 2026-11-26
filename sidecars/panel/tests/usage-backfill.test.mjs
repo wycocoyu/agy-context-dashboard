@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm,utimes} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,utimes,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -30,6 +30,32 @@ test('disk discovery isolates App and IDE, includes WAL changes, and works witho
  assert.notEqual(first.conversations[0].signature,changed.conversations[0].signature);
  await assert.rejects(discoverLocalConversations({home}),/Explicit/);
  assert.equal((await discoverLocalConversations({home,host:'app',limit:1})).errors,1);
+});
+
+test('IDE 2.6 migration marker and missing legacy IDE dirs resolve to unified antigravity conversations while rejecting symlinks',async t=>{
+ const {home:migrated}=await setup(t);
+ await mkdir(join(migrated,'.gemini','antigravity','conversations'),{recursive:true});
+ await mkdir(join(migrated,'.gemini','antigravity-ide','conversations'),{recursive:true});
+ await writeFile(join(migrated,'.gemini','antigravity','conversations',id+'.db'),'unified');
+ await writeFile(join(migrated,'.gemini','antigravity-ide','conversations',other+'.db'),'stale');
+ await writeFile(join(migrated,'.gemini','antigravity-ide','.ide_migration'),'migrated');
+ assert.deepEqual((await discoverLocalConversations({home:migrated,host:'ide'})).conversations.map(c=>c.id),[id]);
+
+ const {home:fresh}=await setup(t);
+ await mkdir(join(fresh,'.gemini','antigravity','conversations'),{recursive:true});
+ await mkdir(join(fresh,'.gemini','antigravity-ide'),{recursive:true});
+ await writeFile(join(fresh,'.gemini','antigravity','conversations',id+'.db'),'fresh');
+ assert.deepEqual((await discoverLocalConversations({home:fresh,host:'ide'})).conversations.map(c=>c.id),[id]);
+
+ const {home:linked}=await setup(t);
+ await mkdir(join(linked,'.gemini','antigravity','conversations'),{recursive:true});
+ await writeFile(join(linked,'.gemini','antigravity','conversations',id+'.db'),'target');
+ try{
+  await symlink(join(linked,'.gemini','antigravity'),join(linked,'.gemini','antigravity-ide'),'dir');
+  assert.deepEqual((await discoverLocalConversations({home:linked,host:'ide'})).conversations,[]);
+ }catch(err){
+  if(!['EPERM','EACCES'].includes(err.code))throw err;
+ }
 });
 
 test('backfill imports every page for an unlisted conversation and migrates an existing partial ledger',async t=>{

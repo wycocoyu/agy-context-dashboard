@@ -4,6 +4,7 @@
 import {CdpConnection} from '../compat/runtime-ui.mjs';
 
 const GUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const JETSKI_TOKEN_HASH=/^#t=[0-9a-f]{16,128}$/i;
 const LOOPBACK=new Set(['127.0.0.1','localhost','[::1]']);
 const WORKBENCH='/out/vs/code/electron-browser/workbench/workbench.html';
 const MAX_TARGETS=128,MAX_WORKBENCHES=4,MAX_WRAPPERS=4,MAX_CONTEXTS=16,MAX_FRAMES=64;
@@ -22,11 +23,16 @@ function wrapperUrl(value){
     return u.protocol==='vscode-webview:'&&/^[a-z0-9-]+$/i.test(u.hostname)&&u.pathname==='/index.html'&&!u.username&&!u.password&&!u.port&&!u.hash&&GUID.test(id||'')&&u.searchParams.get('platform')==='electron'&&u.searchParams.get('purpose')==='webviewView'&&u.searchParams.get('parentOrigin')==='vscode-file://vscode-app'&&u.searchParams.get('extensionId')===''?u:null;
   }catch{return null;}
 }
+function frameHref(frame){
+  if(typeof frame?.url!=='string')return '';
+  const fragment=typeof frame.urlFragment==='string'?frame.urlFragment:'';
+  return fragment&&!frame.url.includes('#')?frame.url+fragment:frame.url;
+}
 function backendUrl(value){
   try{
     if(typeof value!=='string'||value.length>8192)return null;
     const u=new URL(value);
-    if(!['http:','https:'].includes(u.protocol)||!LOOPBACK.has(u.hostname)||!u.port||u.username||u.password||u.hash)return null;
+    if(!['http:','https:'].includes(u.protocol)||!LOOPBACK.has(u.hostname)||!u.port||u.username||u.password||(u.hash&&!JETSKI_TOKEN_HASH.test(u.hash)))return null;
     if(u.pathname!=='/'&&!/^\/c\/[0-9a-f-]+\/?$/i.test(u.pathname))return null;
     if(u.pathname!=='/'&&!GUID.test(u.pathname.split('/')[2]||''))return null;
     for(const [key,value]of Object.entries(EXPECTED_PARAMS))if(u.searchParams.getAll(key).length!==1||u.searchParams.get(key)!==value)return null;
@@ -132,14 +138,16 @@ export async function discoverIdeWebviews({targets,workbenches,port,connect=(url
           try{
             childConnection=connect(raw.webSocketDebuggerUrl,{timeout:remaining()});await childConnection.open();remaining();
             const child=(await childConnection.command('Page.getFrameTree')).frameTree?.frame;
-            if(child?.id!==raw.id||child.parentId!==context.auxData.frameId||child.url!==raw.url)continue;
+            const childHref=frameHref(child);
+            if(child?.id!==raw.id||child.parentId!==context.auxData.frameId||!backendUrl(childHref))continue;
+            if(childHref!==raw.url&&!(child.url===raw.url&&Boolean(child.urlFragment)))continue;
             remaining();const owner=await connection.command('DOM.getFrameOwner',{frameId:child.id});
             if(!Number.isSafeInteger(owner.backendNodeId)||owner.backendNodeId<1)continue;
             remaining();const element=(await connection.command('DOM.describeNode',{backendNodeId:owner.backendNodeId,depth:0})).node;
             if(element?.localName!=='iframe'||!Array.isArray(element.attributes)||element.attributes.length>64)continue;
             const attrs=new Map();for(let i=0;i<element.attributes.length;i+=2)attrs.set(element.attributes[i],element.attributes[i+1]);
             if(attrs.get('id')!=='jetski-frame'||attrs.get('src')!==content.url)continue;
-            candidates.push({...raw,ideWebview:true,expectedFrameId:child.id,expectedParentId:context.auxData.frameId,expectedUrl:child.url,workbenchId:proof.workbench.id});
+            candidates.push({...raw,ideWebview:true,expectedFrameId:child.id,expectedParentId:context.auxData.frameId,expectedUrl:childHref,workbenchId:proof.workbench.id});
           }catch{/* A navigation during proof construction leaves this candidate unauthorized. */}
           finally{try{childConnection?.close();}catch{}}
         }

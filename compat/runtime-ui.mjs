@@ -210,6 +210,10 @@ export function makeRendererSource(i18n, widget, theme = '', owner = null, gener
   return owner?'if(!window.__agPulseRuntimeRank||window.__agPulseRuntimeRank[0]<'+generation+'||(window.__agPulseRuntimeRank[0]==='+generation+'&&window.__agPulseRuntimeRank[1]<='+JSON.stringify(owner)+')){'+code+'}':code;
 }
 
+const frameHref = frame => typeof frame?.url === 'string'
+  ? (typeof frame.urlFragment === 'string' && frame.urlFragment && !frame.url.includes('#') ? frame.url + frame.urlFragment : frame.url)
+  : '';
+
 export class RuntimeUi {
   constructor({ snapshot, source, profile = platformPaths().profile,
     dataDir, preferences, overrideFiles = null, updater=null, owner=null, owns=async()=>true, enabled = async () => true, discover = discoverTargets, diagnoseError = null, onTargets = null, targetOrigin = target => new URL(target.url).origin, sourceForTarget = () => source, connect = (url, options) => new CdpConnection(url, options), interval = 3000, onMissingDebugPort = null } = {}) {
@@ -384,7 +388,7 @@ export class RuntimeUi {
       if(this.stopping||!await this.owns())throw new Error('Sidecar ownership changed');
       const frame = await connection.command('Page.getFrameTree'); connection.frameId = frame.frameTree?.frame?.id;
       if (!connection.frameId) throw new Error('Main renderer frame unavailable');
-      if(connection.ideWebview&&(connection.frameId!==target.expectedFrameId||frame.frameTree.frame.url!==target.expectedUrl||
+      if(connection.ideWebview&&(connection.frameId!==target.expectedFrameId||frameHref(frame.frameTree.frame)!==target.expectedUrl||
         frame.frameTree.frame.parentId!==target.expectedParentId))throw new Error('IDE Agent frame changed during discovery');
       await connection.command('Page.enable');
       await connection.command('Runtime.enable');

@@ -91,9 +91,28 @@ test('child proof requires its own frame, parent and same bounded loopback trans
  for(const modify of cases){const f=fixture();modify(f);assert.deepEqual(await scan(f),[]);}
 });
 test('terminal, artifact, settings, remote, ambiguous flags and malformed conversations are rejected',async()=>{
- const urls=[backend.replace('/?','/terminal?'),backend.replace('/?','/artifact-standalone?'),backend.replace('/?','/settings-standalone?'),backend.replace('/?','/c/not-a-guid?'),backend.replace('127.0.0.1','evil.example'),backend.replace('http://','file://'),backend.replace('extensionView=true','extensionView=false'),backend+'&extensionView=true',backend.replace('extensionVariant=vs-code','extensionVariant=other'),backend+'#untrusted'];
+ const urls=[backend.replace('/?','/terminal?'),backend.replace('/?','/artifact-standalone?'),backend.replace('/?','/settings-standalone?'),backend.replace('/?','/c/not-a-guid?'),backend.replace('127.0.0.1','evil.example'),backend.replace('http://','file://'),backend.replace('extensionView=true','extensionView=false'),backend+'&extensionView=true',backend.replace('extensionVariant=vs-code','extensionVariant=other'),backend+'#untrusted',backend+'#t=abc',backend+'#t='+'z'.repeat(32),backend+'#t='+'a'.repeat(129),backend+'#t='+'a'.repeat(32)+'&extra=1'];
  for(const url of urls){const f=fixture();f.content.url=url;f.targets[2].url=url;f.tree.childFrames[0].childFrames[0].frame.url=url;assert.deepEqual(await scan(f),[]);}
  const f=fixture();f.targets[2].url=backend.replace('/?','/c/'+uuid+'?');f.tree.childFrames[0].childFrames[0].frame.url=f.targets[2].url;assert.equal((await scan(f)).length,1,'SPA navigation may select a conversation under the same validated Agent backend');
+});
+test('Jetski backend #t=<hex> token fragments are authorized across split and combined CDP frame URLs',async()=>{
+ for(const token of ['0'.repeat(16),'a1b2c3d4'.repeat(4),'F'.repeat(64),'9'.repeat(128)]){
+  const fragment=`#t=${token}`;
+  const hashed=backend.replace('/?',`/c/${uuid}?`)+fragment;
+  const split=fixture();
+  split.content.url=hashed;split.targets[2].url=hashed;split.tree.childFrames[0].childFrames[0].frame.url=hashed.split('#')[0];split.tree.childFrames[0].childFrames[0].frame.urlFragment=fragment;
+  const splitRes=await scan(split);
+  assert.equal(splitRes.length,1);assert.equal(splitRes[0].expectedUrl,hashed);
+
+  const unhashedTarget=fixture();
+  unhashedTarget.content.url=hashed;unhashedTarget.targets[2].url=hashed.split('#')[0];unhashedTarget.tree.childFrames[0].childFrames[0].frame.url=hashed.split('#')[0];unhashedTarget.tree.childFrames[0].childFrames[0].frame.urlFragment=fragment;
+  const unhashedRes=await scan(unhashedTarget);
+  assert.equal(unhashedRes.length,1);assert.equal(unhashedRes[0].expectedUrl,hashed);
+ }
+ const spa=fixture();spa.content.url=backend+'#t='+'a'.repeat(32);spa.targets[2].url=backend.replace('/?',`/c/${uuid}?`);spa.tree.childFrames[0].childFrames[0].frame.url=spa.targets[2].url;
+ assert.equal((await scan(spa)).length,1);
+ const forged=fixture();forged.content.url=backend+'#t='+'a'.repeat(32);forged.targets[2].url=backend+'#t='+'a'.repeat(32);forged.tree.childFrames[0].childFrames[0].frame.url=backend;forged.tree.childFrames[0].childFrames[0].frame.urlFragment='#untrusted';
+ assert.deepEqual(await scan(forged),[]);
 });
 test('discovery bounds target lists, contexts, frames and deep trees',async()=>{
  const tooMany=fixture();tooMany.targets.push(...Array.from({length:129},(_,i)=>target('x'+i,'iframe',backend)));assert.deepEqual(await scan(tooMany),[]);assert.equal(tooMany.connections.length,0);

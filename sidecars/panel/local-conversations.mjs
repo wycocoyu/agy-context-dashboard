@@ -11,9 +11,25 @@ async function statInfo(file,directory=false){
  }catch(e){if(e.code==='ENOENT'||e.code==='ENOTDIR')return null;throw e;}
 }
 const stamp=async(file,directory=false)=>(await statInfo(file,directory))?.token??null;
+async function resolveConversationBase(host,home){
+ const unified=join(home,'.gemini','antigravity');
+ if(host!=='ide')return unified;
+ const ide=join(home,'.gemini','antigravity-ide');
+ let ideStat=null;
+ try{ideStat=await lstat(ide);}catch(e){if(e.code!=='ENOENT'&&e.code!=='ENOTDIR')throw e;}
+ if(ideStat?.isSymbolicLink())return ide;
+ if(ideStat?.isDirectory()){
+  try{
+   const migrated=await lstat(join(ide,'.ide_migration'));
+   if(!migrated.isSymbolicLink())return unified;
+  }catch(e){if(e.code!=='ENOENT'&&e.code!=='ENOTDIR')throw e;}
+  if(await statInfo(join(ide,'conversations'),true)||await statInfo(join(ide,'brain'),true))return ide;
+ }
+ return unified;
+}
 export async function discoverLocalConversations({host,home=homedir(),limit=20000}={}){
  if(!['app','ide'].includes(host))throw Error('Explicit conversation host is required');
- const base=join(home,'.gemini',host==='ide'?'antigravity-ide':'antigravity');
+ const base=await resolveConversationBase(host,home);
  const files=new Map();let errors=0,visited=0;
  for(const [name,directory] of [['conversations',false],['brain',true]]){
   const root=join(base,name);

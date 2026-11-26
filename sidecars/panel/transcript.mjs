@@ -1,5 +1,6 @@
 // Optional local text estimates. Never substitute these for host context or
 // request usage. The cache contains numeric summaries, not transcript bodies.
+import {lstatSync} from 'node:fs';
 import {open,realpath,stat} from 'node:fs/promises';
 import {join,relative,isAbsolute} from 'node:path';
 import {homedir} from 'node:os';
@@ -25,9 +26,17 @@ const normalizeToolSource=v=>{
  if(raw.includes('BUILTIN'))return 'builtin';
  return raw.replace(/^CORTEX_COMPONENT_SOURCE_/,'').toLowerCase().slice(0,24);
 };
-export function transcriptBrainRoot(host='app'){
+export function transcriptBrainRoot(host='app',home=homedir()){
  if(!['app','ide'].includes(host))throw Error('Unsupported transcript host');
- return join(homedir(),'.gemini',host==='ide'?'antigravity-ide':'antigravity','brain');
+ if(host==='app')return join(home,'.gemini','antigravity','brain');
+ const ide=join(home,'.gemini','antigravity-ide');
+ try{
+  const ideStat=lstatSync(ide);
+  if(!ideStat.isSymbolicLink()&&ideStat.isDirectory()&&!lstatSync(join(ide,'.ide_migration')).isSymbolicLink()){
+   return join(home,'.gemini','antigravity','brain');
+  }
+ }catch{}
+ return join(ide,'brain');
 }
 function safeToolBreakdown(raw){
  if(!Array.isArray(raw))return [];

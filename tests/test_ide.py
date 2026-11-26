@@ -2,8 +2,13 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import re
+import shutil
+import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
@@ -45,7 +50,8 @@ class IdeTests(unittest.TestCase):
                 checksum = output.with_suffix(output.suffix + '.sha256')
                 original_checksum = checksum.read_bytes()
                 ide_runtime = ('ide/main.mjs', 'ide/runtime.mjs', 'ide/webview-targets.mjs',
-                               'ide/client.mjs', 'ide/discovery.mjs', 'ide/surface.cjs')
+                               'ide/client.mjs', 'ide/discovery.mjs', 'ide/surface.cjs',
+                               'compat/host-theme.mjs', 'compat/remote-ssh.mjs')
                 for name in publisher.LARGE_CONVERSATION_MODULES + ide_runtime:
                     with self.subTest(package=output.suffix, module=name):
                         removed = prefix + name
@@ -148,3 +154,74 @@ class IdeTests(unittest.TestCase):
             calls = []
             manager.manage('uninstall', executable, run=lambda args, **kw: calls.append(args))
             self.assertEqual(calls[0][-2:], ['--uninstall-extension', manager.IDENTITY])
+
+    def test_unpacked_vsix_collector_boots_without_missing_modules(self):
+        node = shutil.which('node')
+        self.assertTrue(node, 'node executable is required to boot the unpacked VSIX collector')
+        import_re = re.compile(r"""(?:from\s+|import\s*\(|require\s*\()\s*['"](\.[^'"]+)['"]""")
+        worker_re = re.compile(r"""new\s+URL\(\s*['"](\.[^'"]+)['"]\s*,\s*import\.meta\.url\s*\)""")
+        asset_re = re.compile(r"""['"]((?:compat|ide|sidecars/panel)/[^'"]+\.(?:cjs|mjs|json))['"]""")
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            vsix = packager.build(base / 'ide.vsix')
+            unpack = base / 'unpacked'
+            with zipfile.ZipFile(vsix) as archive:
+                archive.extractall(unpack)
+            ext = (unpack / 'extension').resolve()
+            for file in ext.rglob('*'):
+                if file.suffix not in {'.mjs', '.cjs', '.js'}:
+                    continue
+                text = file.read_text(encoding='utf-8')
+                for pattern in (import_re, worker_re):
+                    for match in pattern.finditer(text):
+                        target = (file.parent / match.group(1)).resolve()
+                        self.assertTrue(target.is_relative_to(ext), f'Escaped import {match.group(1)} in {file}')
+                        self.assertTrue(target.is_file(), f'Missing VSIX dependency {match.group(1)} imported by {file}')
+                if file == ext / 'ide' / 'main.mjs':
+                    for match in asset_re.finditer(text):
+                        target = (ext / match.group(1)).resolve()
+                        self.assertTrue(target.is_file(), f'Missing VSIX asset {match.group(1)}')
+
+            profile = base / 'profile'
+            data = base / 'data'
+            profile.mkdir()
+            proc = subprocess.Popen(
+                [node, str(ext / 'ide' / 'main.mjs')],
+                cwd=str(unpack),
+                env={**os.environ, 'AG_PULSE_IDE_PROFILE': str(profile), 'AG_PULSE_IDE_DATA': str(data)},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                runtime_file = data / 'runtime.json'
+                deadline = time.monotonic() + 10.0
+                ready = False
+                while time.monotonic() < deadline:
+                    if proc.poll() is not None:
+                        _, stderr = proc.communicate()
+                        self.fail(f'Unpacked VSIX collector exited early ({proc.returncode}): {stderr}')
+                    if runtime_file.is_file():
+                        try:
+                            info = json.loads(runtime_file.read_text(encoding='utf-8'))
+                        except (OSError, json.JSONDecodeError):
+                            time.sleep(0.05)
+                            continue
+                        if info.get('mode') == 'ide' and info.get('pid') == proc.pid:
+                            ready = True
+                            break
+                    time.sleep(0.05)
+                self.assertTrue(ready, 'Unpacked VSIX collector did not write runtime.json in time')
+                self.assertIsNone(proc.poll())
+            finally:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                if proc.stdout:
+                    proc.stdout.close()
+                if proc.stderr:
+                    proc.stderr.close()

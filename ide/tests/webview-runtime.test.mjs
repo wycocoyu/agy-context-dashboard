@@ -147,3 +147,23 @@ test('same-document route teardown disposes the retired bridge and removes its b
  assert.equal(c.calls.some(x=>x.method==='Page.addScriptToEvaluateOnNewDocument'),false);
  pending.resolve({connection:'live',groups:[],speed:null});await request;assert.equal(replies(c).length,0);
 });
+
+test('nested attachment accepts split CDP url + urlFragment matching Jetski #t=<hex> target and rejects mismatched fragments',async t=>{
+ const tokenHash='#t='+'a1b2c3d4'.repeat(4);
+ const hashedUrl=url+tokenHash;
+ const f=fixture();t.after(()=>f.ui.stop());
+ f.state.targets=[{...nestedTarget(),url:hashedUrl,expectedUrl:hashedUrl}];
+ f.state.frame={id:'agent-frame',parentId:'wrapper-frame',url,urlFragment:tokenHash};
+ await f.ui.tick();
+ assert.equal(f.ui.health.state,'mounted');
+ assert.equal(f.connections[0].closed,false);
+ assert.ok(f.connections[0].guardedSource.includes(JSON.stringify(hashedUrl)));
+
+ for(const badFragment of [undefined,'','#t='+'b'.repeat(32),'#untrusted']){
+  const bad=fixture();
+  bad.state.targets=[{...nestedTarget(),url:hashedUrl,expectedUrl:hashedUrl}];
+  bad.state.frame=badFragment===undefined?{id:'agent-frame',parentId:'wrapper-frame',url}:{id:'agent-frame',parentId:'wrapper-frame',url,urlFragment:badFragment};
+  await assert.rejects(bad.ui.attach(bad.state.targets[0]),/frame changed/);
+  assert.equal(bad.connections[0].closed,true);
+ }
+});
