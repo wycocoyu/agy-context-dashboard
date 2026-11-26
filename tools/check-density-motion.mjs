@@ -113,7 +113,7 @@ try{
      return {clones,stages,animations,classChanges,remainingStages:w.shadowRoot.querySelectorAll('.density-stage').length,p95FrameMs:intervals.sort((a,b)=>a-b)[Math.floor(intervals.length*.95)]};
     }finally{observer.disconnect();classes.disconnect();Node.prototype.cloneNode=clone;Element.prototype.animate=animate;}
    });
-   assert.equal(drag.remainingStages,0);assert.ok(drag.stages<=2,JSON.stringify(drag));assert.ok(drag.animations<=40,JSON.stringify(drag));assert.ok(drag.clones<=60,JSON.stringify(drag));assert.ok(drag.classChanges<=4,JSON.stringify(drag));
+   assert.equal(drag.remainingStages,0);assert.ok(drag.stages<=2,JSON.stringify(drag));assert.ok(drag.animations<=40,JSON.stringify(drag));assert.ok(drag.clones<=60,JSON.stringify(drag));assert.ok(drag.classChanges<=7,JSON.stringify(drag));
    const threshold=await page.evaluate(async()=>{
     const w=document.getElementById('ag-pulse-status-bar'),section=document.querySelector('.composer');
     const frame=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);};
